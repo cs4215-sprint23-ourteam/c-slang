@@ -64,6 +64,7 @@ export enum Chapter {
   CALC = 1
 }
 
+// we probably want to change the default version in the future
 export enum Variant {
   DEFAULT = 'vm',
   EVALUATOR = 'evaluator'

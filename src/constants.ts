@@ -25,6 +25,7 @@ export const JSSLANG_PROPERTIES = {
   factorToIncreaseBy: 10
 }
 
+// chapters are likely to be unnecessary
 export const sourceLanguages: Language[] = [
   { chapter: Chapter.CALC, variant: Variant.DEFAULT },
   { chapter: Chapter.CALC, variant: Variant.EVALUATOR }
