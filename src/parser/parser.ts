@@ -106,6 +106,30 @@ export function parse(source: string, context: Context) {
   const parse_tree: RawTree = (parser as any).parse(tokens)
   if (parse_tree) {
     debugTree(parse_tree)
+  let program: es.Program | undefined
+
+  // if (context.variant === 'calc' || context.variant === 'vm') {
+  //   const inputStream = CharStreams.fromString(source)
+  //   const lexer = new CalcLexer(inputStream)
+  //   const tokenStream = new CommonTokenStream(lexer)
+  //   const parser = new CalcParser(tokenStream)
+  //   parser.buildParseTree = true
+  //   try {
+  //     const tree = parser.expression()
+  //     program = convertSource(tree)
+  //   } catch (error) {
+  //     if (error instanceof FatalSyntaxError) {
+  //       context.errors.push(error)
+  //     } else {
+  //       throw error
+  //     }
+  //   }
+  //   const hasErrors = context.errors.find(m => m.severity === ErrorSeverity.ERROR)
+  //   if (program && !hasErrors) {
+  //     return program
+  //   } else {
+  //     return undefined
+  //   }
   } else {
     console.debug('debug: error parsing')
   }
