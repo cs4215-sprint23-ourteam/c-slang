@@ -16,12 +16,11 @@ GREATER_OR_EQUAL: '>=';
 LESS_OR_EQUAL: '<=';
 NOT: '!';
 ADDRESS: '&';
-POINTER: '*';
 AND: '&&';
 OR: '||';
 INT: [0-9]+;
-FLOAT: [INT+ '.' INT+];
 CHAR: [A-Z a-z]+;
+FLOAT: (INT+ '.' INT+);
 WHITESPACE: [ \r\n\t]+ -> skip;
 VOID: 'void';
 
@@ -38,13 +37,15 @@ function_declaration: type_specifier name '(' params ')' block;
 
 params: param+ | VOID;
 
-param: type_specifier name | type_specifier '*' name;
+pointer: MUL;
+
+param: type_specifier name | type_specifier pointer name;
 
 type_specifier: INT | FLOAT | CHAR;
 
 name : CHAR | name CHAR | name '_' |name INT;
 
-block : '{' declaration | statement '}';
+block : '{' (declaration | statement)* '}';
 
 statement 
     : expression';'
@@ -57,13 +58,13 @@ statement
     ;
 
 expression
-   : INT                                            # Number
-   | CHAR+                                          # String
+   : INT                                            
+   | CHAR+                                          
    | name
-   | left=expression operator=MUL right=expression  # Multiplication
-   | left=expression operator=DIV right=expression  # Division
-   | left=expression operator=ADD right=expression  # Addition
-   | left=expression operator=SUB right=expression  # Subtraction
+   | left=expression operator=MUL right=expression  
+   | left=expression operator=DIV right=expression  
+   | left=expression operator=ADD right=expression  
+   | left=expression operator=SUB right=expression  
    | left=expression operator=REMAIN right=expression
    | left=expression operator=EQUAL right=expression 
    | left=expression operator=NOT_EQUAL right=expression 
@@ -76,7 +77,7 @@ expression
    | left=expression operator=NOT
    | left=expression operator=SUB
    | left=expression operator=ADDRESS
-   | left=expression operator=POINTER
+   | left=expression operator=MUL
    ;
 
 assignment: name '=' expression';';
