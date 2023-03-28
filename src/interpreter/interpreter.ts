@@ -72,8 +72,8 @@ export const evaluators: { [nodeType: string]: Evaluator<CTree> } = {
   /** Simple Values */
 
   additive_expr_p: function*(node: CTree, context: Context) {
-    const value = yield* actualValue(node.children![1] as CTree, context)
-    const rest = yield* actualValue(node.children![2] as CTree, context)
+    const value = yield* actualValue(node.nodeChildren[1], context)
+    const rest = yield* actualValue(node.nodeChildren[2], context)
     if ((node.children![0] as Token).tokenClass === "+") {
       return value + rest
     } else {
@@ -82,8 +82,8 @@ export const evaluators: { [nodeType: string]: Evaluator<CTree> } = {
   },
 
   additive_expr: function*(node: CTree, context: Context) {
-    const left = yield* actualValue(node.children![0] as CTree, context)
-    const right = yield* actualValue(node.children![1] as CTree, context)
+    const left = yield* actualValue(node.nodeChildren[0], context)
+    const right = yield* actualValue(node.nodeChildren[1], context)
     // const error = rttc.checkBinaryExpression(node, node.operator, left, right)
     // if (error) {
     //   return handleRuntimeError(context, error)

@@ -4,7 +4,8 @@ import * as parser from 'node-c-parser'
 
 import { Context, ErrorSeverity, ErrorType, SourceError } from '../types'
 import { stripIndent } from '../utils/formatters'
-import { CTree, Token } from './tree'
+import { CTree as RawTree } from './raw-tree'
+import { CTree, Token, transformTree } from './tree'
 
 export class DisallowedConstructError implements SourceError {
   public type = ErrorType.SYNTAX
@@ -91,7 +92,7 @@ export class TrailingCommaError implements SourceError {
   }
 }
 
-function debugTree(tree: CTree | Token, level = 0) {
+function debugTree(tree: RawTree | Token, level = 0) {
   console.debug('debug:', level, tree)
   if ('children' in tree && tree.children) {
     for (const c of tree.children) {
@@ -102,11 +103,11 @@ function debugTree(tree: CTree | Token, level = 0) {
 
 export function parse(source: string, context: Context) {
   const tokens = (parser as any).lexer.lexUnit.tokenize(source)
-  const parse_tree: CTree = (parser as any).parse(tokens)
+  const parse_tree: RawTree = (parser as any).parse(tokens)
   if (parse_tree) {
     debugTree(parse_tree)
   } else {
     console.debug('debug: error parsing')
   }
-  return parse_tree
+  return transformTree(parse_tree)
 }
