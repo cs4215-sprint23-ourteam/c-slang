@@ -71,7 +71,7 @@ function validChapterVariant(variant: any) {
 function main() {
   const opt = require('node-getopt')
     .create([
-      ['v', 'variant=VARIANT', 'set the Source variant (i.e., calc)', 'calc'],
+      ['v', 'variant=VARIANT', 'set the Source variant (i.e., vm, evaluator)', 'vm'],
       ['h', 'help', 'display this help'],
       ['e', 'eval', "don't show REPL, only display output of evaluation"]
     ])

@@ -116,7 +116,6 @@ function* evaluateExternalDeclaration(context: Context, node: CTree) {
   return result
 }
 
-
 export function* evaluate(node: CTree, context: Context) {
   console.debug('debug: node', node)
   const result = yield* evaluators[node.title!](node, context)

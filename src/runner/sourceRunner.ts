@@ -5,6 +5,7 @@ import { parse } from '../parser/parser'
 import { CTree } from '../parser/tree'
 import { PreemptiveScheduler } from '../schedulers'
 import { Context, Scheduler, Variant } from '../types'
+import { compile, runCompiled } from '../vm'
 // import { validateAndAnnotate } from '../validator/validator'
 import { determineVariant, resolvedErrorPromise } from './utils'
 
@@ -36,8 +37,8 @@ export async function sourceRunner(
   context.errors = []
 
   // Parse and validate
-  const program = parse(code, context)
-  if (!program) {
+  const parsedTree = parse(code, context)
+  if (!parsedTree) {
     return resolvedErrorPromise
   }
 
@@ -45,7 +46,14 @@ export async function sourceRunner(
     return resolvedErrorPromise
   }
 
-  return runInterpreter(program, context, theOptions)
+  if (options.variant === Variant.EVALUATOR) {
+    return runInterpreter(parsedTree, context, theOptions)
+  }
+  return Promise.resolve({
+    status: 'finished',
+    context: context,
+    value: runCompiled(compile(parsedTree))
+  })
 }
 
 export async function sourceFilesRunner(

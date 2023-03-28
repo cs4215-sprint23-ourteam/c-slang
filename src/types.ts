@@ -65,7 +65,8 @@ export enum Chapter {
 }
 
 export enum Variant {
-  DEFAULT = 'calc'
+  DEFAULT = 'vm',
+  EVALUATOR = 'evaluator'
 }
 
 export interface Language {
