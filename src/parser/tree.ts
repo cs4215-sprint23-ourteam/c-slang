@@ -1,6 +1,6 @@
 import { CTree as RawTree, Token as RawToken } from './raw-tree'
 
-export interface Token extends RawToken { }
+export type Token = RawToken
 
 /**
  * helper type that has some type unsafe properties
@@ -35,7 +35,7 @@ export class CTree {
     if (this.children) {
       this.children.forEach(c => {
         if (c.title) {
-          (c as CTree).debugTree(maxDepth, depth + 1)
+          ;(c as CTree).debugTree(maxDepth, depth + 1)
         }
       })
     }

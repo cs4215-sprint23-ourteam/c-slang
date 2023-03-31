@@ -1,7 +1,5 @@
-import * as es from 'estree'
-
-import { Context } from '../types'
-import OpCodes from './opcodes'
+import { Environment, Frame } from '../types'
+import { OpCodes } from './opcodes'
 import { Instruction, Program } from './vm-compiler'
 
 // eventually this should be any[]
@@ -11,59 +9,87 @@ let INSTRS: Instruction[] = []
 let instr: Instruction
 
 // microcode
-const M: (() => void)[] = []
+const M: { [code in OpCodes]: () => void } = {
+  NOP: () => PC++,
 
-M[OpCodes.NOP] = () => PC++
+  LDC: () => {
+    const op = instr.args![0] as number
+    PC++
+    OS.push(op)
+  },
 
-M[OpCodes.LDC] = () => {
-  const op = instr[1] as number
-  PC++
-  OS.push(op)
-}
+  ADD: () => {
+    const op2 = OS.pop() as number
+    const op1 = OS.pop() as number
+    PC++
+    OS.push(op1 + op2)
+  },
 
-M[OpCodes.ADD] = () => {
-  const op2 = OS.pop() as number
-  const op1 = OS.pop() as number
-  PC++
-  OS.push(op1 + op2)
-}
+  SUB: () => {
+    const op2 = OS.pop() as number
+    const op1 = OS.pop() as number
+    PC++
+    OS.push(op1 - op2)
+  },
 
-M[OpCodes.SUB] = () => {
-  const op2 = OS.pop() as number
-  const op1 = OS.pop() as number
-  PC++
-  OS.push(op1 - op2)
-}
+  MUL: () => {
+    const op2 = OS.pop() as number
+    const op1 = OS.pop() as number
+    PC++
+    OS.push(op1 * op2)
+  },
 
-M[OpCodes.MUL] = () => {
-  const op2 = OS.pop() as number
-  const op1 = OS.pop() as number
-  PC++
-  OS.push(op1 * op2)
-}
+  DIV: () => {
+    const op2 = OS.pop() as number
+    const op1 = OS.pop() as number
+    PC++
+    OS.push(op1 / op2)
+  },
 
-M[OpCodes.DIV] = () => {
-  const op2 = OS.pop() as number
-  const op1 = OS.pop() as number
-  PC++
-  OS.push(op1 / op2)
+  RET: () => {
+    PC++
+  },
+
+  LDF: () => {
+    PC++
+  },
+
+  LDN: () => {
+    PC++
+  },
+
+  GOTO: () => {
+    PC++
+  },
+
+  ASSIGN: () => {
+    PC++
+  },
+
+  RESET: () => {
+    PC++
+  },
+
+  DONE: () => {}
 }
 
 // TODO (feature - bottleneck):
 // 1. run-time stack - function support
 // 2. environments - prelude functions + declaration/assignment + scoping
 // 3. heap
-export function runWithProgram(p: Program, context: Context): any {
-  const ENTRY = p[0]
-  INSTRS = p[1]
+export function runWithProgram(p: Program): any {
+  const ENTRY = p.entry
+  INSTRS = p.instrs
   OS = []
   PC = ENTRY
 
-  while (INSTRS[PC][0] !== OpCodes.DONE) {
+  while (INSTRS[PC].opcode !== OpCodes.DONE) {
     instr = INSTRS[PC]
-    M[instr[0]]()
+    M[instr.opcode]()
   }
 
+  // currently returns the top-most value of the operand stack, but shouldn't
+  // return anything
   const top = OS.slice(-1)[0]
   return top
 }

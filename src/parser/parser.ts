@@ -101,37 +101,26 @@ function debugTree(tree: RawTree | Token, level = 0) {
   }
 }
 
+function debugTree2(tree: CTree | Token, level = 0) {
+  console.debug('debug2:', level, tree)
+  if ('children' in tree && tree.children) {
+    for (const c of tree.children) {
+      debugTree2(c, level + 1)
+    }
+  }
+}
+
 export function parse(source: string, context: Context) {
   const tokens = (parser as any).lexer.lexUnit.tokenize(source)
   const parse_tree: RawTree = (parser as any).parse(tokens)
   if (parse_tree) {
     debugTree(parse_tree)
-  let program: es.Program | undefined
-
-  // if (context.variant === 'calc' || context.variant === 'vm') {
-  //   const inputStream = CharStreams.fromString(source)
-  //   const lexer = new CalcLexer(inputStream)
-  //   const tokenStream = new CommonTokenStream(lexer)
-  //   const parser = new CalcParser(tokenStream)
-  //   parser.buildParseTree = true
-  //   try {
-  //     const tree = parser.expression()
-  //     program = convertSource(tree)
-  //   } catch (error) {
-  //     if (error instanceof FatalSyntaxError) {
-  //       context.errors.push(error)
-  //     } else {
-  //       throw error
-  //     }
-  //   }
-  //   const hasErrors = context.errors.find(m => m.severity === ErrorSeverity.ERROR)
-  //   if (program && !hasErrors) {
-  //     return program
-  //   } else {
-  //     return undefined
-  //   }
   } else {
     console.debug('debug: error parsing')
   }
-  return transformTree(parse_tree)
+  const tree = transformTree(parse_tree)
+
+  // if (parse_tree) debugTree2(tree)
+
+  return tree
 }

@@ -47,20 +47,19 @@ const helpers = {
       code: OpCodes.ASSIGN,
       values: pos
     }
-  },
+  }
 }
 
 function typeHelper<T extends { [key: string]: (node: CTree) => void }>(arg: T): T {
-  return arg;
+  return arg
 }
 
 const compilers = typeHelper({
-  external_declaration: (node) => {
+  external_declaration: node => {
     compile(node.nodeChildren[0])
   },
-  declaration: (node) => {
-  },
-  function_definition: (node) => {
+  declaration: node => {},
+  function_definition: node => {
     // ignore type_specifier
     // process declarator, ignore pointer, get name, get parameters
     if (node.nodeChildren[1].title !== 'declarator') {
@@ -89,13 +88,13 @@ const compilers = typeHelper({
     }
     const gotoPos = wc
     instructions[wc++] = {
-      code: OpCodes.GOTO,
+      code: OpCodes.GOTO
     }
     symbols.push(params)
     compile(node.getLastNode(1))
     // seems no need of LDC for statements since no support for top level expressions
     instructions[wc++] = {
-      code: OpCodes.LDC,
+      code: OpCodes.LDC
     }
     instructions[wc++] = {
       code: OpCodes.RESET
@@ -107,15 +106,13 @@ const compilers = typeHelper({
     console.debug('debug', symbols)
   },
 
-  compound_stmt: (node) => {
+  compound_stmt: node => {
     if (node.shouldChildren.length === 2) {
       return
     }
     node.nodeChildren[1].listItems.forEach(compile)
   },
-  stmt: (node) => {
-  }
-
+  stmt: node => {}
 })
 
 export function compile(node: CTree) {
@@ -125,9 +122,7 @@ export function compile(node: CTree) {
   compiler(node)
 }
 
-function compileToIns(
-  parsedTree: CTree,
-): Program {
+function compileToIns(parsedTree: CTree): Program {
   parsedTree.listItems.forEach(c => compile(c))
   instructions[wc++] = { code: OpCodes.DONE }
   return { entry: 0, instructions: instructions }

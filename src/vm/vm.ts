@@ -1,6 +1,5 @@
 import { Program } from './compiler'
 
-
 // currently RTS for keeping frames, values are all stored in heap
 // move to c-like stack later
 type Address = number
