@@ -5,7 +5,7 @@ import { parse } from '../parser/parser'
 import { CTree } from '../parser/tree'
 import { PreemptiveScheduler } from '../schedulers'
 import { Context, Scheduler, Variant } from '../types'
-import { compile, runCompiled } from '../vm'
+import { compileProgram, runCompiled } from '../vm'
 // import { validateAndAnnotate } from '../validator/validator'
 import { determineVariant, resolvedErrorPromise } from './utils'
 
@@ -52,7 +52,7 @@ export async function sourceRunner(
   return Promise.resolve({
     status: 'finished',
     context: context,
-    value: runCompiled(compile(parsedTree))
+    value: runCompiled(compileProgram(parsedTree))
   })
 }
 

@@ -1,19 +1,11 @@
-import { CTree as RawTree, Token } from './raw-tree'
+import { CTree as RawTree, Token as RawToken } from './raw-tree'
+
+export interface Token extends RawToken { }
 
 /**
  * helper type that has some type unsafe properties
  */
-export interface CTree {
-  readonly title: string
-  readonly children?: (Token | CTree)[]
-  readonly nodeChildren: CTree[]
-  readonly tokenChildren: Token[]
-  readonly firstChild: Token | CTree
-}
-
-export { Token } from './raw-tree'
-
-class CTreeNode implements CTree {
+export class CTree {
   title: string
   children?: (Token | CTree)[]
 
@@ -29,10 +21,6 @@ class CTreeNode implements CTree {
     }
   }
 
-  get firstChild(): Token | CTree {
-    return this.shouldChildren[0]
-  }
-
   get nodeChildren(): CTree[] {
     return this.shouldChildren as CTree[]
   }
@@ -40,10 +28,44 @@ class CTreeNode implements CTree {
   get tokenChildren(): Token[] {
     return this.shouldChildren as Token[]
   }
+
+  debugTree(maxDepth: number, depth: number = 0) {
+    console.debug('debug tree', depth, this)
+    if (depth === maxDepth) return
+    if (this.children) {
+      this.children.forEach(c => {
+        if (c.title) {
+          (c as CTree).debugTree(maxDepth, depth + 1)
+        }
+      })
+    }
+  }
+
+  findWithTitle(title: string) {
+    const result = this.nodeChildren.find(c => 'title' in c && c.title === title)
+    if (result === undefined) {
+      throw new Error('not found')
+    }
+    return result
+  }
+
+  getLastNode(idx: number) {
+    if (idx > this.nodeChildren.length) {
+      throw new Error('bad index')
+    }
+    return this.nodeChildren[this.shouldChildren.length - idx]
+  }
+
+  get listItems(): CTree[] {
+    if (this.getLastNode(1).title === 'EPSILON') {
+      return []
+    }
+    return [this.getLastNode(2), ...this.getLastNode(1).listItems]
+  }
 }
 
 export function transformTree(raw: RawTree): CTree {
-  const root = new CTreeNode(raw.title!)
+  const root = new CTree(raw.title!)
 
   if ('children' in raw && raw.children) {
     root.children = []
