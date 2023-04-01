@@ -5,6 +5,7 @@ import { Instruction, Program } from './vm-compiler'
 // eventually this should be any[]
 let OS: number[] = []
 let PC: number = 0
+let RTS: any[][] = [[]]
 let INSTRS: Instruction[] = []
 let instr: Instruction
 

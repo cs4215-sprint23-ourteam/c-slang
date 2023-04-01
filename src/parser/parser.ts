@@ -92,20 +92,11 @@ export class TrailingCommaError implements SourceError {
   }
 }
 
-function debugTree(tree: RawTree | Token, level = 0) {
+function debugTree(tree: CTree | RawTree | Token, level = 0) {
   console.debug('debug:', level, tree)
   if ('children' in tree && tree.children) {
     for (const c of tree.children) {
       debugTree(c, level + 1)
-    }
-  }
-}
-
-function debugTree2(tree: CTree | Token, level = 0) {
-  console.debug('debug2:', level, tree)
-  if ('children' in tree && tree.children) {
-    for (const c of tree.children) {
-      debugTree2(c, level + 1)
     }
   }
 }
@@ -120,7 +111,7 @@ export function parse(source: string, context: Context) {
   }
   const tree = transformTree(parse_tree)
 
-  // if (parse_tree) debugTree2(tree)
+  // if (parse_tree) debugTree(tree)
 
   return tree
 }
