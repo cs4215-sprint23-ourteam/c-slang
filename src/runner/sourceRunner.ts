@@ -5,8 +5,8 @@ import { parse } from '../parser/parser'
 import { CTree } from '../parser/tree'
 import { PreemptiveScheduler } from '../schedulers'
 import { Context, Scheduler, Variant } from '../types'
-import { compileProgram, runCompiled } from '../vm'
-// import { validateAndAnnotate } from '../validator/validator'
+import { compileProgram } from '../vm/vm-compiler'
+import { runWithProgram } from '../vm/vm-machine'
 import { determineVariant, resolvedErrorPromise } from './utils'
 
 const DEFAULT_SOURCE_OPTIONS: IOptions = {
@@ -25,6 +25,19 @@ function runInterpreter(program: CTree, context: Context, options: IOptions): Pr
   const it = evaluate(program, context)
   const scheduler: Scheduler = new PreemptiveScheduler(options.steps)
   return scheduler.run(it, context)
+}
+
+async function runVM(program: CTree, context: Context, options: IOptions): Promise<Result> {
+  try {
+    return Promise.resolve({
+      status: 'finished',
+      context,
+      value: runWithProgram(compileProgram(program))
+    })
+  } catch (error) {
+    // implement better error checking in the future
+    return resolvedErrorPromise
+  }
 }
 
 export async function sourceRunner(
@@ -46,14 +59,7 @@ export async function sourceRunner(
     return resolvedErrorPromise
   }
 
-  if (options.variant === Variant.EVALUATOR) {
-    return runInterpreter(parsedTree, context, theOptions)
-  }
-  return Promise.resolve({
-    status: 'finished',
-    context: context,
-    value: runCompiled(compileProgram(parsedTree))
-  })
+  return runVM(parsedTree, context, theOptions)
 }
 
 export async function sourceFilesRunner(
