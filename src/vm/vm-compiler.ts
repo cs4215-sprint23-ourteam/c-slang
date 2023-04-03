@@ -1,5 +1,4 @@
 import { CTree, Token } from '../parser/tree'
-import { Context, Value } from '../types'
 import { OpCodes } from './opcodes'
 
 const VALID_ASSIGNMENT_OPERATORS = new Map([['=', OpCodes.ASSIGN]])
@@ -29,9 +28,16 @@ export type Program = {
   instrs: Instruction[]
 }
 
+// compile-time frame and environment
+type CFrame = string[]
+type CEnv = CFrame[]
+
 let wc = 0
 let Instructions: Instruction[] = []
 let Symbols: string[][] = [[]]
+const BuiltInFunctionNames: CFrame = []
+const ConstantNames: CFrame = []
+const GlobalCompileEnvironment: CEnv = [BuiltInFunctionNames, ConstantNames]
 
 function initGlobalVar() {
   wc = 0
@@ -49,10 +55,18 @@ function lookupPos(s: string) {
   return undefined
 }
 
+// for dealing with compile-time environments
 const helpers = {
-  declare: (name: string) => {
-    Symbols[Symbols.length - 1].push(name)
+  // declare: (name: string) => {
+  //   Symbols[Symbols.length - 1].push(name)
+  // },
+  declare: (name: string, frame: CFrame) => {
+    frame.forEach(str => {
+      if (str == name) throw new Error('declaring existing name')
+    })
+    frame.push(name)
   },
+  extend: (frame: CFrame, env: CEnv): CEnv => [...env, frame],
   assign: (name: string) => {
     const pos = lookupPos(name)
     if (pos === undefined) {
@@ -65,6 +79,16 @@ const helpers = {
   }
 }
 
+// handles (declaration_specifier, declarator) pair
+function createName(dec_s: CTree, dec: CTree, ind: number): string {
+  // handle declaration_specifier here
+
+  const dir_dec = dec.children![0]
+  const name = (dir_dec.children![0] as Token).lexeme as string
+  // helpers.declareRespectfully(name, ind)
+  return name
+}
+
 export function compileProgram(program: CTree): Program {
   // pre-process prelude and vmInternalFunctions
   return compileToIns(program)
@@ -72,110 +96,115 @@ export function compileProgram(program: CTree): Program {
 
 // note - there seem to be two types of _p instrs, one with tokens in between
 // and one without. can probably be generalised.
-const compilers: { [nodeType: string]: (node: CTree) => void } = {
-  EPSILON: node => {},
+const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
+  EPSILON: (node, env) => {},
 
   // children: multiplicative_expr, additive_expr_p
-  additive_expr(node): void {
-    compile(node.children![0] as CTree)
-    compile(node.children![1] as CTree)
+  additive_expr: (node, env) => {
+    compile(node.children![0] as CTree, env)
+    compile(node.children![1] as CTree, env)
   },
 
   // children: binop token, multiplicative_expr, additive_expr_p
-  additive_expr_p(node: CTree): void {
+  additive_expr_p: (node, env) => {
     if (node.children!.length === 3) {
       const token = node.children![0] as Token
       const opcode = VALID_BINARY_OPERATORS.get(token.lexeme) as OpCodes
-      compile(node.children![1] as CTree)
+      compile(node.children![1] as CTree, env)
       Instructions[wc++] = { opcode: opcode }
-      compile(node.children![2] as CTree)
+      compile(node.children![2] as CTree, env)
     }
   },
 
   // children: equality_expr, and_expr_p
-  and_expr(node: CTree): void {
-    compile(node.children![0] as CTree)
+  and_expr: (node, env) => {
+    compile(node.children![0] as CTree, env)
     // implement this: compile(node.children[1] as CTree)
   },
 
   // children: conditional_expr
-  assignment_expr: node => compile(node.children![0] as CTree),
+  assignment_expr: (node, env) => compile(node.children![0] as CTree, env),
 
   // children: stmt
-  block_item: node => compile(node.children![0] as CTree),
+  block_item: (node, env) => compile(node.children![0] as CTree, env),
 
   // children: block_item, block_item_list_p
-  block_item_list(node: CTree): void {
-    compile(node.children![0] as CTree)
+  block_item_list: (node, env) => {
+    compile(node.children![0] as CTree, env)
     // implement this: compile(node.children[1] as CTree)
   },
 
   // children: unary_expr
-  cast_expr: node => compile(node.children![0] as CTree),
+  cast_expr: (node, env) => compile(node.children![0] as CTree, env),
 
-  // children: '{', block_item_list, '}'
-  compound_stmt: node => compile(node.children![1] as CTree),
+  // children: '{', '}'
+  //        OR '{', block_item_list, '}'
+  compound_stmt: (node, env) => {
+    if (node.children!.length > 2) {
+      compile(node.children![1] as CTree, env)
+    }
+  },
 
   // children: logical_or_expr
-  conditional_expr: node => compile(node.children![0] as CTree),
+  conditional_expr: (node, env) => compile(node.children![0] as CTree, env),
 
   // children: declaration_specifiers, init_declarator_list
-  declaration(node: CTree): void {
-    compile(node.children![0] as CTree)
-    compile(node.children![1] as CTree)
+  declaration: (node, env) => {
+    compile(node.children![0] as CTree, env)
+    compile(node.children![1] as CTree, env)
   },
 
   // children: type_specifier
   // there may be more than one - be careful
-  declaration_specifiers(node: CTree): void {
-    compile(node.children![0] as CTree)
+  declaration_specifiers: (node, env) => {
+    compile(node.children![0] as CTree, env)
   },
 
   // children: (pointer)*, direct_declarator
-  declarator(node: CTree): void {
+  declarator: (node, env) => {
     // deal with pointers eventually
-    compile(node.children![node.children!.length - 1] as CTree)
+    compile(node.children![node.children!.length - 1] as CTree, env)
   },
 
   // children: identifier token, direct_declarator_p
-  direct_declarator(node: CTree): void {
+  direct_declarator: (node, env) => {
     const token = node.children![0] as Token
     const name = token.lexeme
-    helpers.declare(name)
-    compile(node.children![1] as CTree)
+    // helpers.declare(name)
+    compile(node.children![1] as CTree, env)
   },
 
   // children: empty or '(', parameter_type_list, ')', direct_declarator_p
-  direct_declarator_p(node: CTree): void {},
+  direct_declarator_p: (node, env) => {},
 
   // children: relational_expr, equality_expr_p
-  equality_expr(node: CTree): void {
-    compile(node.children![0] as CTree)
+  equality_expr: (node, env) => {
+    compile(node.children![0] as CTree, env)
     // implement this: compile(node.children[1] as CTree)
   },
 
   // children: assignment_expr, expr_p
-  expr(node: CTree): void {
-    compile(node.children![0] as CTree)
+  expr: (node, env) => {
+    compile(node.children![0] as CTree, env)
     // implement this: compile(node.children[1] as CTree)
   },
 
   // children: and_expr, exclusive_or_expr_p
-  exclusive_or_expr(node: CTree): void {
-    compile(node.children![0] as CTree)
+  exclusive_or_expr: (node, env) => {
+    compile(node.children![0] as CTree, env)
     // implement this: compile(node.children[1] as CTree)
   },
 
   // children: expr, ';'
-  expression_stmt: node => compile(node.children![0] as CTree),
+  expression_stmt: (node, env) => compile(node.children![0] as CTree, env),
 
   // children: function_definition - there's probably more
-  external_declaration(node: CTree): void {
-    compile(node.children![0] as CTree)
+  external_declaration: (node, env) => {
+    compile(node.children![0] as CTree, env)
   },
 
   // children: declaration_specifiers, declarator, compound_stmt
-  function_definition(node: CTree): void {
+  function_definition: (node, env) => {
     // deal with specifiers eventually...
     // ideally we want a more generalized way of dealing with the following
     // * declaration_specifiers
@@ -196,6 +225,10 @@ const compilers: { [nodeType: string]: (node: CTree) => void } = {
       throw new Error()
     }
     const name = direct.tokenChildren[0].lexeme
+
+    // const name = createName(node.children![0] as CTree,
+    //   node.children![1] as CTree)
+
     // ignore variadic func, so ignore ... in params
     const params: string[] = []
     if (direct.nodeChildren[1].nodeChildren.length === 4) {
@@ -205,7 +238,7 @@ const compilers: { [nodeType: string]: (node: CTree) => void } = {
       })
     }
 
-    helpers.declare(name)
+    // helpers.declare(name)
 
     // add LDF, add GOTO to jump over function body, extend compile time symbol table, and compile body
     Instructions[wc++] = {
@@ -217,119 +250,117 @@ const compilers: { [nodeType: string]: (node: CTree) => void } = {
       opcode: OpCodes.GOTO
     }
     Symbols.push(params)
-    compile(node.getLastNode(1))
-    // seems no need of LDC for statements since no support for top level expressions
-    Instructions[wc++] = {
-      opcode: OpCodes.LDC
-    }
+    compile(node.getLastNode(1), env)
+
     Instructions[wc++] = {
       opcode: OpCodes.RESET
     }
     Instructions[gotoPos].args = [wc]
 
-    helpers.assign(name)
+    // helpers.assign(name)
 
-    compile(node.children![2] as CTree)
+    compile(node.children![2] as CTree, env)
   },
 
   // children: exclusive_or_expr, inclusive_or_expr_p
-  inclusive_or_expr(node: CTree): void {
-    compile(node.children![0] as CTree)
+  inclusive_or_expr: (node, env) => {
+    compile(node.children![0] as CTree, env)
     // implement this: compile(node.children[1] as CTree)
   },
 
-  // children: declarator OR declarator, assignment token, initializer
-  init_declarator(node: CTree): void {
-    compile(node.children![0] as CTree)
+  // children: declarator
+  //        OR declarator, assignment token, initializer
+  init_declarator: (node, env) => {
+    compile(node.children![0] as CTree, env)
     if (node.children!.length > 1) {
       const token = node.children![1] as Token
       const opcode = VALID_ASSIGNMENT_OPERATORS.get(token.lexeme) as OpCodes
-      compile(node.children![2] as CTree)
+      compile(node.children![2] as CTree, env)
       Instructions[wc++] = { opcode: opcode }
     }
   },
 
   // children: init_declarator, init_declarator_list_p
-  init_declarator_list(node: CTree): void {
+  init_declarator_list: (node, env) => {
     if (node.children) {
-      compile(node.children[0] as CTree)
+      compile(node.children[0] as CTree, env)
       // implement this: compile(node.children[1] as CTree)
     }
   },
 
   // children: inclusive_or_expr, logical_and_expr_p
-  logical_and_expr(node: CTree): void {
-    compile(node.children![0] as CTree)
+  logical_and_expr: (node, env) => {
+    compile(node.children![0] as CTree, env)
     // implement this: compile(node.children[1] as CTree)
   },
 
   // children: logical_and_expr, logical_or_expr
-  logical_or_expr(node: CTree): void {
-    compile(node.children![0] as CTree)
+  logical_or_expr: (node, env) => {
+    compile(node.children![0] as CTree, env)
     // implement this: compile(node.children[1] as CTree)
   },
 
   // children: cast_expr, multiplicative_expr_p
-  multiplicative_expr(node: CTree): void {
-    compile(node.children![0] as CTree)
+  multiplicative_expr: (node, env) => {
+    compile(node.children![0] as CTree, env)
     // implement this: compile(node.children[1] as CTree)
   },
 
   // children: declaration_specifiers, declarator
-  parameter_declaration(node: CTree): void {
+  parameter_declaration: (node, env) => {
     // we should handle this the same way we do function_definition
   },
 
   // children: parameter_declaration, parameter_list_p
-  parameter_list(node: CTree): void {
+  parameter_list: (node, env) => {
     // implement this: compile(node.children![0] as CTree)
   },
 
   // children: parameter_list
-  parameter_type_list: node => compile(node.children![0] as CTree),
+  parameter_type_list: (node, env) => compile(node.children![0] as CTree, env),
 
   // children: primary_expr, postfix_expr_p
-  postfix_expr(node: CTree): void {
-    compile(node.children![0] as CTree)
+  postfix_expr: (node, env) => {
+    compile(node.children![0] as CTree, env)
     // implement this: compile(node.children[1] as CTree)
   },
 
   // children: expression token
-  primary_expr(node: CTree): void {
+  primary_expr: (node, env) => {
     const token = node.children![0] as Token
     const value: number = Number(token.lexeme)
     Instructions[wc++] = { opcode: OpCodes.LDC, args: [value] }
   },
 
   // children: shift_expr, relational_expr_p
-  relational_expr(node: CTree): void {
-    compile(node.children![0] as CTree)
+  relational_expr: (node, env) => {
+    compile(node.children![0] as CTree, env)
     // implement this: compile(node.children[1] as CTree)
   },
 
   // children: additive_expr, shift_expr_p
-  shift_expr(node: CTree): void {
-    compile(node.children![0] as CTree)
+  shift_expr: (node, env) => {
+    compile(node.children![0] as CTree, env)
     // implement this: compile(node.children[1] as CTree)
   },
 
   // children: expr
   // other many types of statements here; implement as we go
-  stmt: node => compile(node.children![0] as CTree),
+  stmt: (node, env) => compile(node.children![0] as CTree, env),
 
   // children: external_declaration, translation_unit_p
-  translation_unit(node: CTree): void {
-    compile(node.children![0] as CTree)
+  translation_unit: (node, env) => {
+    compile(node.children![0] as CTree, env)
     // implement this: compile(node.children[1] as CTree)
   },
 
   // children: type specifier token
-  type_specifier(node: CTree): void {
+  type_specifier: (node, env) => {
     // enforce type safety here; probably through an instruction?
   },
 
   // children: postfix_expr
-  unary_expr: node => compile(node.children![0] as CTree)
+  unary_expr: (node, env) => compile(node.children![0] as CTree, env)
 }
 
 // prelude refers to predefined functions in C (like malloc)
@@ -337,17 +368,18 @@ const compilers: { [nodeType: string]: (node: CTree) => void } = {
 // they are both empty for now but we'll add to them as development progresses
 function compileToIns(program: CTree, vmInternalFunctions?: string[]): Program {
   initGlobalVar()
-  compile(program)
+  compile(program, GlobalCompileEnvironment)
   // eventually we find the main function and append a call instruction here
   Instructions[wc++] = { opcode: OpCodes.DONE }
   console.log(Instructions)
+  console.log('symbol table: ', Symbols)
   return { entry: 0, instrs: Instructions }
 }
 
-function compile(expr: CTree): void {
+function compile(expr: CTree, env: CEnv): void {
   // this is handy to find which expr is not defined
   // console.log("compiling", expr.title)
   const compiler = compilers[expr.title]
   if (!compiler) throw Error('Unsupported operation')
-  compiler(expr)
+  compiler(expr, env)
 }
