@@ -45,16 +45,6 @@ function initGlobalVar() {
   MainPos = [-1, -1]
 }
 
-// function lookupPos(s: string) {
-//   for (const [frameIdx, frame] of Symbols.entries()) {
-//     const pos = frame.indexOf(s)
-//     if (pos !== -1) {
-//       return [frameIdx, pos]
-//     }
-//   }
-//   return undefined
-// }
-
 // for dealing with compile-time environments
 const helpers = {
   declare: (name: string, frame: CFrame): void => {
@@ -235,8 +225,6 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       opcode: OpCodes.GOTO
     }
 
-    // compile(node.getLastNode(1), env)
-
     compile(node.children![2] as CTree, tmpEnv)
 
     Instructions[wc++] = {
@@ -358,7 +346,6 @@ function compileToIns(program: CTree, vmInternalFunctions?: string[]): Program {
   initGlobalVar()
   const env = helpers.extend([], GlobalCompileEnvironment)
   compile(program, env)
-  // eventually we find the main function and append a call instruction here
   if (MainPos[0] === -1 && MainPos[1] === -1) throw new Error('no main function detected')
   Instructions[wc++] = {
     opcode: OpCodes.CALL,
