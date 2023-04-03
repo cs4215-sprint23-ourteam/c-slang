@@ -13,6 +13,7 @@ export enum OpCodes {
   LDN = 'LDN', // name
   GOTO = 'GOTO',
   ASSIGN = 'ASSIGN',
+  CALL = 'CALL',
   RESET = 'RESET',
   DONE = 'DONE'
 }

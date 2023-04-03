@@ -34,7 +34,7 @@ type CEnv = CFrame[]
 
 let wc = 0
 let Instructions: Instruction[] = []
-let Symbols: string[][] = [[]]
+let MainPos: [number, number] = [-1, -1]
 const BuiltInFunctionNames: CFrame = []
 const ConstantNames: CFrame = []
 const GlobalCompileEnvironment: CEnv = [BuiltInFunctionNames, ConstantNames]
@@ -42,50 +42,48 @@ const GlobalCompileEnvironment: CEnv = [BuiltInFunctionNames, ConstantNames]
 function initGlobalVar() {
   wc = 0
   Instructions = []
-  Symbols = [[]]
+  MainPos = [-1, -1]
 }
 
-function lookupPos(s: string) {
-  for (const [frameIdx, frame] of Symbols.entries()) {
-    const pos = frame.indexOf(s)
-    if (pos !== -1) {
-      return [frameIdx, pos]
-    }
-  }
-  return undefined
-}
+// function lookupPos(s: string) {
+//   for (const [frameIdx, frame] of Symbols.entries()) {
+//     const pos = frame.indexOf(s)
+//     if (pos !== -1) {
+//       return [frameIdx, pos]
+//     }
+//   }
+//   return undefined
+// }
 
 // for dealing with compile-time environments
 const helpers = {
-  // declare: (name: string) => {
-  //   Symbols[Symbols.length - 1].push(name)
-  // },
-  declare: (name: string, frame: CFrame) => {
+  declare: (name: string, frame: CFrame): void => {
     frame.forEach(str => {
       if (str == name) throw new Error('declaring existing name')
     })
     frame.push(name)
   },
   extend: (frame: CFrame, env: CEnv): CEnv => [...env, frame],
-  assign: (name: string) => {
-    const pos = lookupPos(name)
-    if (pos === undefined) {
-      throw new Error('assigning to undeclared symbol')
+  lookup: (frame: CFrame, name: string): number => {
+    for (let i = 0; i < frame.length; i++) {
+      if (frame[i] == name) return i
     }
-    Instructions[wc++] = {
-      opcode: OpCodes.ASSIGN,
-      args: pos
-    }
+    return -1
+  },
+  position: (env: CEnv, name: string): [number, number] => {
+    let i = env.length
+    while (helpers.lookup(env[--i], name) === -1) {}
+    return [i, helpers.lookup(env[i], name)]
   }
 }
 
 // handles (declaration_specifier, declarator) pair
-function createName(dec_s: CTree, dec: CTree, ind: number): string {
+function createName(decSpe: CTree, dec: CTree, env: CEnv): string {
   // handle declaration_specifier here
 
   const dir_dec = dec.children![0]
   const name = (dir_dec.children![0] as Token).lexeme as string
-  // helpers.declareRespectfully(name, ind)
+  helpers.declare(name, env[env.length - 1])
   return name
 }
 
@@ -205,42 +203,29 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
 
   // children: declaration_specifiers, declarator, compound_stmt
   function_definition: (node, env) => {
-    // deal with specifiers eventually...
-    // ideally we want a more generalized way of dealing with the following
-    // * declaration_specifiers
-    // * declarator
-    // * direct_declarator
-    // * direct_declarator_p
-    // * parameter_type_list
-    // * parameter_list
-    // * parameter_declaration
-    // problem is that parameter_declaration's children are also a
-    // (declaration_specifiers, declarator) pair, so we need an intelligent way
-    // of knowing when that pair is a function name and when it is a param name
-    if (node.nodeChildren[1].title !== 'declarator') {
-      throw new Error()
-    }
-    const direct = node.nodeChildren[1].findWithTitle('direct_declarator')
-    if (direct === undefined || direct.tokenChildren[0].tokenClass !== 'IDENTIFIER') {
-      throw new Error()
-    }
-    const name = direct.tokenChildren[0].lexeme
+    const decSpe = node.children![0] as CTree
+    const dec = node.children![1] as CTree
+    const funcName = createName(decSpe, dec, env)
+    const funcLoc = helpers.position(env, funcName)
+    if (funcName == 'main') MainPos = funcLoc
 
-    // const name = createName(node.children![0] as CTree,
-    //   node.children![1] as CTree)
+    // children: identifier token, direct_declarator_p
+    const dirDec = dec.children![0] as CTree
+    // children: empty
+    //        OR '(', parameter_type_list, ')', direct_declarator_p
+    const dirDecP = dirDec.children![1] as CTree
+    let tmpEnv = env
 
     // ignore variadic func, so ignore ... in params
-    const params: string[] = []
-    if (direct.nodeChildren[1].nodeChildren.length === 4) {
-      const paramList = direct.nodeChildren[1].nodeChildren[1].nodeChildren[0]
-      paramList.listItems.forEach(decl => {
-        params.push(decl.getLastNode(1).getLastNode(1).tokenChildren[0].lexeme)
+    if (dirDecP.children!.length === 4) {
+      const parTypeList = dirDecP.children![1] as CTree
+      const parList = parTypeList.children![0] as CTree
+      tmpEnv = helpers.extend([], env)
+      parList.listItems.forEach(parDec => {
+        createName(parDec.children![0] as CTree, parDec.children![1] as CTree, tmpEnv)
       })
     }
 
-    // helpers.declare(name)
-
-    // add LDF, add GOTO to jump over function body, extend compile time symbol table, and compile body
     Instructions[wc++] = {
       opcode: OpCodes.LDF,
       args: [wc + 1]
@@ -249,17 +234,20 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     Instructions[wc++] = {
       opcode: OpCodes.GOTO
     }
-    Symbols.push(params)
-    compile(node.getLastNode(1), env)
+
+    // compile(node.getLastNode(1), env)
+
+    compile(node.children![2] as CTree, tmpEnv)
 
     Instructions[wc++] = {
       opcode: OpCodes.RESET
     }
     Instructions[gotoPos].args = [wc]
 
-    // helpers.assign(name)
-
-    compile(node.children![2] as CTree, env)
+    Instructions[wc++] = {
+      opcode: OpCodes.ASSIGN,
+      args: funcLoc
+    }
   },
 
   // children: exclusive_or_expr, inclusive_or_expr_p
@@ -368,11 +356,16 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
 // they are both empty for now but we'll add to them as development progresses
 function compileToIns(program: CTree, vmInternalFunctions?: string[]): Program {
   initGlobalVar()
-  compile(program, GlobalCompileEnvironment)
+  const env = helpers.extend([], GlobalCompileEnvironment)
+  compile(program, env)
   // eventually we find the main function and append a call instruction here
+  if (MainPos[0] === -1 && MainPos[1] === -1) throw new Error('no main function detected')
+  Instructions[wc++] = {
+    opcode: OpCodes.CALL,
+    args: MainPos
+  }
   Instructions[wc++] = { opcode: OpCodes.DONE }
   console.log(Instructions)
-  console.log('symbol table: ', Symbols)
   return { entry: 0, instrs: Instructions }
 }
 
