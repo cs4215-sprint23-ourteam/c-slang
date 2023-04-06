@@ -47,7 +47,7 @@ export type Instruction = {
 
 export type Argument = number // | Offset | Address
 export type Program = {
-  entry: number // index of entry point function; should be main() eventually
+  entry: number
   instrs: Instruction[]
 }
 
@@ -244,8 +244,13 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     }
   },
 
-  // children: expr, ';'
-  expression_stmt: (node, env) => compile(node.children![0] as CTree, env),
+  // children: ';'
+  //        OR expr, ';'
+  expression_stmt: (node, env) => {
+    if (node.children!.length === 1) {
+      compile(node.children![0] as CTree, env)
+    }
+  },
 
   // children: function_definition - there's probably more
   external_declaration: (node, env) => {
@@ -315,6 +320,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
   // children: while token, '(', expr, ')', stmt
   //        OR do token, stmt, while token, '(', expr, ')', ';'
   //        OR for token, '(', declaration, expression_stmt, expr ')', stmt
+  //        OR for token, '(', expression_stmt, expression_stmt, expr ')', stmt
   iteration_stmt: (node, env) => {
     const token = node.children![0] as Token
     const iterType = token.lexeme as string
@@ -334,7 +340,35 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       }
       jofIns.args = [wc]
     } else if (iterType === 'do') {
+      const stmt = node.children![1] as CTree
+      compile(stmt, env)
+      Instructions[wc++] = { opcode: OpCodes.POP }
+      const expr = node.children![4] as CTree
+      compile(expr, env)
+      const jofIns: Instruction = { opcode: OpCodes.JOF }
+      Instructions[wc++] = jofIns
+      Instructions[wc++] = {
+        opcode: OpCodes.GOTO,
+        args: [loopStart]
+      }
+      jofIns.args = [wc]
     } else if (iterType === 'for') {
+      const dec = node.children![2] as CTree
+      compile(dec, env)
+      const expr = node.children![3] as CTree
+      compile(expr, env)
+      const jofIns: Instruction = { opcode: OpCodes.JOF }
+      Instructions[wc++] = jofIns
+      const stmt = node.children![7] as CTree
+      compile(stmt, env)
+      Instructions[wc++] = { opcode: OpCodes.POP }
+      const update = node.children![4] as CTree
+      compile(update, env)
+      Instructions[wc++] = {
+        opcode: OpCodes.GOTO,
+        args: [loopStart]
+      }
+      jofIns.args = [wc]
     }
   },
 
@@ -464,7 +498,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
   //        OR jump_stmt
   //        OR iteration_stmt
   //        OR selection_stmt
-  // other many types of statements here; implement as we go
+  // need to add pop instruction - do after returns
   stmt: (node, env) => compile(node.children![0] as CTree, env),
 
   // children: external_declaration, translation_unit_p
