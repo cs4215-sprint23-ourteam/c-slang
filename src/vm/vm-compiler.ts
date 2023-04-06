@@ -171,7 +171,14 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
   block_item: (node, env) => compile(node.children![0] as CTree, env),
 
   // children: block_item, block_item_list_p
-  block_item_list: (node, env) => flatten(node).forEach(child => compile(child as CTree, env)),
+  block_item_list: (node, env) => {
+    const enterIns = { opcode: OpCodes.ENTER_SCOPE } as Instruction
+    const newEnv = helpers.extend([], env)
+    Instructions[wc++] = enterIns
+    flatten(node).forEach(child => compile(child as CTree, newEnv))
+    enterIns.args = [newEnv[newEnv.length - 1].length]
+    Instructions[wc++] = { opcode: OpCodes.EXIT_SCOPE }
+  },
 
   // children: unary_expr
   cast_expr: (node, env) => compile(node.children![0] as CTree, env),
@@ -292,7 +299,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     Instructions[wc++] = {
       opcode: OpCodes.GOTO
     }
-    compile(node.children![2] as CTree, helpers.extend([], tmpEnv))
+    compile(node.children![2] as CTree, tmpEnv)
     Instructions[wc++] = {
       opcode: OpCodes.RESET
     }
@@ -329,7 +336,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     if (iterType === 'while') {
       const expr = node.children![2] as CTree
       compile(expr, env)
-      const jofIns: Instruction = { opcode: OpCodes.JOF }
+      const jofIns = { opcode: OpCodes.JOF } as Instruction
       Instructions[wc++] = jofIns
       const stmt = node.children![4] as CTree
       compile(stmt, env)
@@ -345,7 +352,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       Instructions[wc++] = { opcode: OpCodes.POP }
       const expr = node.children![4] as CTree
       compile(expr, env)
-      const jofIns: Instruction = { opcode: OpCodes.JOF }
+      const jofIns = { opcode: OpCodes.JOF } as Instruction
       Instructions[wc++] = jofIns
       Instructions[wc++] = {
         opcode: OpCodes.GOTO,
@@ -357,7 +364,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       compile(dec, env)
       const expr = node.children![3] as CTree
       compile(expr, env)
-      const jofIns: Instruction = { opcode: OpCodes.JOF }
+      const jofIns = { opcode: OpCodes.JOF } as Instruction
       Instructions[wc++] = jofIns
       const stmt = node.children![7] as CTree
       compile(stmt, env)
@@ -469,10 +476,10 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     const pred = node.children![2] as CTree
     const cons = node.children![4] as CTree
     compile(pred, env)
-    const jofIns: Instruction = { opcode: OpCodes.JOF }
+    const jofIns = { opcode: OpCodes.JOF } as Instruction
     Instructions[wc++] = jofIns
     compile(cons, env)
-    const gotoIns: Instruction = { opcode: OpCodes.GOTO }
+    const gotoIns = { opcode: OpCodes.GOTO } as Instruction
     jofIns.args = [wc]
     if (node.children!.length === 6) {
       const alt = node.children![6] as CTree
@@ -496,13 +503,21 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
 
   // children: expr
   //        OR jump_stmt
+  //        OR compound_stmt
   //        OR iteration_stmt
   //        OR selection_stmt
   // need to add pop instruction - do after returns
   stmt: (node, env) => compile(node.children![0] as CTree, env),
 
   // children: external_declaration, translation_unit_p
-  translation_unit: (node, env) => flatten(node).forEach(child => compile(child as CTree, env)),
+  translation_unit: (node, env) => {
+    const enterIns = { opcode: OpCodes.ENTER_SCOPE } as Instruction
+    const newEnv = helpers.extend([], env)
+    Instructions[wc++] = enterIns
+    flatten(node).forEach(child => compile(child as CTree, newEnv))
+    enterIns.args = [newEnv[newEnv.length - 1].length]
+    Instructions[wc++] = { opcode: OpCodes.EXIT_SCOPE }
+  },
 
   // children: type specifier token
   type_specifier: (node, env) => {
@@ -528,8 +543,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
 // they are both empty for now but we'll add to them as development progresses
 function compileToIns(program: CTree, vmInternalFunctions?: string[]): Program {
   initGlobalVar()
-  const env = helpers.extend([], GlobalCompileEnvironment)
-  compile(program, env)
+  compile(program, GlobalCompileEnvironment)
   if (MainPos[0] === -1 && MainPos[1] === -1) throw new Error('no main function detected')
   Instructions[wc++] = {
     opcode: OpCodes.CALL,

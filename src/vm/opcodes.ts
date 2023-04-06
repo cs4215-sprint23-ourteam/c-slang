@@ -33,6 +33,8 @@ export enum OpCodes {
   JOF = 'JOF',
   POP = 'POP',
   RESET = 'RESET',
+  ENTER_SCOPE = 'ENTER_SCOPE',
+  EXIT_SCOPE = 'EXIT_SCOPE',
   DONE = 'DONE'
 }
 
