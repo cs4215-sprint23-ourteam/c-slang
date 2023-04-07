@@ -76,6 +76,7 @@ type CEnv = CFrame[]
 let wc = 0
 let Instructions: Instruction[] = []
 let MainPos: [number, number] = [-1, -1]
+const FunctionArityMap: { [name: string]: number } = {}
 const BuiltInFunctionNames: CFrame = []
 const ConstantNames: CFrame = []
 const GlobalCompileEnvironment: CEnv = [BuiltInFunctionNames, ConstantNames]
@@ -365,6 +366,8 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       arity = params.length
     }
 
+    FunctionArityMap[funcName] = arity
+
     Instructions[wc++] = {
       opcode: OpCodes.LDF,
       args: [arity, wc + 1]
@@ -545,6 +548,9 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       Instructions[wc++] = { opcode: OpCodes.POP }
     } else if (posExpP.children!.length === 3) {
       // function call with no arguments
+      const name = (priExp.children![0] as Token).lexeme
+      if (FunctionArityMap[name] !== 0) throw new Error('too few arguments to function ' + name)
+
       Instructions[wc++] = {
         opcode: OpCodes.CALL,
         args: [0]
@@ -559,9 +565,15 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       for (let i = 0; i < list.length; i += 2) {
         compile(list[i] as CTree, env)
       }
+      const arity = (list.length + 1) / 2
+      const name = (priExp.children![0] as Token).lexeme
+
+      if (FunctionArityMap[name] > arity) throw new Error('too few arguments to function ' + name)
+      if (FunctionArityMap[name] < arity) throw new Error('too many arguments to function ' + name)
+
       Instructions[wc++] = {
         opcode: OpCodes.CALL,
-        args: [(list.length + 1) / 2]
+        args: [arity]
       }
     }
   },
