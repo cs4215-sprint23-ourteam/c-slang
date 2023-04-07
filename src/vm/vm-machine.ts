@@ -163,6 +163,26 @@ const M: { [code in OpCodes]: () => void } = {
 
   ASSIGN: () => (E[instr.args![0]][instr.args![1]] = OS.slice(-1)[0]),
 
+  ADD_ASSIGN: () => (E[instr.args![0]][instr.args![1]] += OS.slice(-1)[0]),
+
+  SUB_ASSIGN: () => (E[instr.args![0]][instr.args![1]] -= OS.slice(-1)[0]),
+
+  MUL_ASSIGN: () => (E[instr.args![0]][instr.args![1]] *= OS.slice(-1)[0]),
+
+  DIV_ASSIGN: () => (E[instr.args![0]][instr.args![1]] /= OS.slice(-1)[0]),
+
+  MOD_ASSIGN: () => (E[instr.args![0]][instr.args![1]] %= OS.slice(-1)[0]),
+
+  LEFT_ASSIGN: () => (E[instr.args![0]][instr.args![1]] <<= OS.slice(-1)[0]),
+
+  RIGHT_ASSIGN: () => (E[instr.args![0]][instr.args![1]] >>= OS.slice(-1)[0]),
+
+  XOR_ASSIGN: () => (E[instr.args![0]][instr.args![1]] ^= OS.slice(-1)[0]),
+
+  AND_ASSIGN: () => (E[instr.args![0]][instr.args![1]] &= OS.slice(-1)[0]),
+
+  OR_ASSIGN: () => (E[instr.args![0]][instr.args![1]] |= OS.slice(-1)[0]),
+
   CALL: () => {
     const arity = instr.args![0]
     const args = []
@@ -175,7 +195,7 @@ const M: { [code in OpCodes]: () => void } = {
       addr: PC,
       env: E
     })
-    E = [...closure.env!, args]
+    E = [...closure.env!, args, []]
     PC = closure.addr!
   },
 
@@ -235,9 +255,9 @@ export function runWithProgram(p: Program): any {
 
   while (INSTRS[PC].opcode !== OpCodes.DONE) {
     instr = INSTRS[PC++]
-    // console.log("running PC: ", PC - 1, " instr: ", instr)
-    // console.log("OS: ", OS)
-    // console.log("E: ", E)
+    // console.log('running PC: ', PC - 1, ' instr: ', instr)
+    // console.log('OS: ', OS)
+    // console.log('E: ', E)
     M[instr.opcode]()
   }
 

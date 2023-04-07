@@ -1,7 +1,19 @@
 import { CTree, Token } from '../parser/tree'
 import { OpCodes } from './opcodes'
 
-const VALID_ASSIGNMENT_OPERATORS = new Map([['=', OpCodes.ASSIGN]])
+const VALID_ASSIGNMENT_OPERATORS = new Map([
+  ['=', OpCodes.ASSIGN],
+  ['+=', OpCodes.ADD_ASSIGN],
+  ['-=', OpCodes.SUB_ASSIGN],
+  ['*=', OpCodes.MUL_ASSIGN],
+  ['/=', OpCodes.DIV_ASSIGN],
+  ['%=', OpCodes.MOD_ASSIGN],
+  ['<<=', OpCodes.LEFT_ASSIGN],
+  ['>>=', OpCodes.RIGHT_ASSIGN],
+  ['^=', OpCodes.XOR_ASSIGN],
+  ['&=', OpCodes.AND_ASSIGN],
+  ['|=', OpCodes.OR_ASSIGN]
+])
 
 const VALID_BINARY_OPERATORS = new Map([
   ['+', OpCodes.ADD],
