@@ -249,7 +249,25 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
   },
 
   // children: logical_or_expr
-  conditional_expr: (node, env) => compile(node.children![0] as CTree, env),
+  //        OR logical_or_expr, '?', expr, ':', conditional_expr
+  conditional_expr: (node, env) => {
+    if (node.children!.length === 1) {
+      compile(node.children![0] as CTree, env)
+    } else if (node.children!.length === 5) {
+      const pred = node.children![0] as CTree
+      const cons = node.children![2] as CTree
+      compile(pred, env)
+      const jofIns = { opcode: OpCodes.JOF } as Instruction
+      Instructions[wc++] = jofIns
+      compile(cons, env)
+      const gotoIns = { opcode: OpCodes.GOTO } as Instruction
+      Instructions[wc++] = gotoIns
+      jofIns.args = [wc]
+      const alt = node.children![4] as CTree
+      compile(alt, env)
+      gotoIns.args = [wc]
+    }
+  },
 
   // children: declaration_specifiers, init_declarator_list
   declaration: (node, env) => {
@@ -667,7 +685,7 @@ function compileToIns(program: CTree, vmInternalFunctions?: string[]): Program {
   Instructions[wc++] = { opcode: OpCodes.EXIT_SCOPE }
   Instructions[wc++] = { opcode: OpCodes.DONE }
   for (let i = 0; i < Instructions.length; i++) {
-    // console.log(i, Instructions[i])
+    console.log(i, Instructions[i])
   }
   return { entry: 0, instrs: Instructions }
 }
