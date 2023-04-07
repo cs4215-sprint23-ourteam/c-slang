@@ -24,7 +24,6 @@ export enum OpCodes {
   XOR = 'XOR',
   AND = 'AND', // logical and
   OR = 'OR', // logical or
-  RET = 'RET',
   LDF = 'LDF', // function
   LD = 'LD', // name
   GOTO = 'GOTO',
@@ -33,6 +32,12 @@ export enum OpCodes {
   JOF = 'JOF',
   POP = 'POP',
   RESET = 'RESET',
+  BREAK = 'BREAK',
+  BMARKER = 'BMARKER',
+  CONT = 'CONT',
+  CMARKER = 'CMARKER',
+  RET = 'RET',
+  RMARKER = 'RMARKER', // marker for return
   ENTER_SCOPE = 'ENTER_SCOPE',
   EXIT_SCOPE = 'EXIT_SCOPE',
   DONE = 'DONE'

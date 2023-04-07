@@ -11,6 +11,12 @@ const VALID_BINARY_OPERATORS = new Map([
   ['%', OpCodes.MOD]
 ])
 
+const VALID_CONTROL_OPERATORS = new Map([
+  ['break', OpCodes.BREAK],
+  ['continue', OpCodes.CONT],
+  ['return', OpCodes.RET]
+])
+
 const VALID_EQUALITY_OPERATORS = new Map([
   ['==', OpCodes.EQ],
   ['!=', OpCodes.NE]
@@ -120,6 +126,39 @@ function flatten(node: CTree): (CTree | Token)[] {
   return list
 }
 
+// this is a compiler level check - assignment and unary operators should only
+// accept lvalues. lvalues are locations in memory that identifies as objects.
+// we should ONLY run this check on unary_expr OR primary_expr, wherein the structure we are
+// looking for is:
+// unary_expr
+//  => postfix_expr
+//    => primary_expr (guaranteed)
+//      => (constant or) identifier token
+//    => postfix_expr_p (guaranteed)
+//      => EPSILON (or others of length != 1)
+// note that unary_expr can also have unary_token, unary_expr children.
+// we can skip some sanity checks because of the above guarantees.
+// reject everything else.
+function lvalueCheck(node: CTree): boolean {
+  return node.title === 'unary_expr'
+    ? node.children!.length === 1 &&
+        lvalueCheck(node.children![0].children![0] as CTree) &&
+        node.children![0].children![1].children!.length === 1
+    : node.title === 'primary_expr'
+    ? (node.children![0] as Token).tokenClass === 'IDENTIFIER'
+    : false
+}
+
+function lvalueLocation(env: CEnv, node: CTree): [number, number] {
+  if (!lvalueCheck(node)) throw new Error('lvalue required for left side of operation')
+  return helpers.find(
+    env,
+    node.title === 'unary_expr'
+      ? (node.children![0].children![0].children![0] as Token).lexeme
+      : (node.children![0] as Token).lexeme
+  )
+}
+
 export function compileProgram(program: CTree): Program {
   // pre-process prelude and vmInternalFunctions
   return compileToIns(program)
@@ -157,13 +196,20 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
   // children: conditional_expr
   //        OR unary_expr, assignment_operator, assignment_expr
   assignment_expr: (node, env) => {
-    compile(node.children![0] as CTree, env)
+    if (node.children!.length === 1) {
+      compile(node.children![0] as CTree, env)
+    }
     if (node.children!.length === 3) {
+      const loc = lvalueLocation(env, node.children![0] as CTree)
       const assOp = node.children![1] as CTree
       const token = assOp.children![0] as Token
       const opcode = VALID_ASSIGNMENT_OPERATORS.get(token.lexeme) as OpCodes
       compile(node.children![2] as CTree, env)
-      Instructions[wc++] = { opcode: opcode }
+      Instructions[wc++] = {
+        opcode: opcode,
+        args: loc
+      }
+      Instructions[wc++] = { opcode: OpCodes.POP }
     }
   },
 
@@ -172,12 +218,11 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
 
   // children: block_item, block_item_list_p
   block_item_list: (node, env) => {
-    const enterIns = { opcode: OpCodes.ENTER_SCOPE } as Instruction
     const newEnv = helpers.extend([], env)
-    Instructions[wc++] = enterIns
-    flatten(node).forEach(child => compile(child as CTree, newEnv))
-    enterIns.args = [newEnv[newEnv.length - 1].length]
-    Instructions[wc++] = { opcode: OpCodes.EXIT_SCOPE }
+    flatten(node).forEach(child => {
+      compile(child as CTree, newEnv)
+      Instructions[wc++] = { opcode: OpCodes.POP }
+    })
   },
 
   // children: unary_expr
@@ -254,15 +299,14 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
   // children: ';'
   //        OR expr, ';'
   expression_stmt: (node, env) => {
-    if (node.children!.length === 1) {
+    if (node.children!.length === 2) {
       compile(node.children![0] as CTree, env)
     }
   },
 
-  // children: function_definition - there's probably more
-  external_declaration: (node, env) => {
-    compile(node.children![0] as CTree, env)
-  },
+  // children: declaration
+  //        OR function_definition
+  external_declaration: (node, env) => compile(node.children![0] as CTree, env),
 
   // children: declaration_specifiers, declarator, compound_stmt
   function_definition: (node, env) => {
@@ -300,6 +344,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       opcode: OpCodes.GOTO
     }
     compile(node.children![2] as CTree, tmpEnv)
+    Instructions[wc++] = { opcode: OpCodes.RMARKER }
     Instructions[wc++] = {
       opcode: OpCodes.RESET
     }
@@ -326,13 +371,16 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
 
   // children: while token, '(', expr, ')', stmt
   //        OR do token, stmt, while token, '(', expr, ')', ';'
-  //        OR for token, '(', declaration, expression_stmt, expr ')', stmt
-  //        OR for token, '(', expression_stmt, expression_stmt, expr ')', stmt
+  //        OR for token, '(', declaration, expression_stmt, expr, ')', stmt
+  //        OR for token, '(', expression_stmt, expression_stmt, expr, ')', stmt
   iteration_stmt: (node, env) => {
     const token = node.children![0] as Token
     const iterType = token.lexeme as string
 
-    const loopStart = wc
+    let loopStart = wc
+    // honestly the structure is pretty similar so we can probably refactor them.
+    // even a do-while loop simply prepends a goto instruction to the start
+    // of the execution.
     if (iterType === 'while') {
       const expr = node.children![2] as CTree
       compile(expr, env)
@@ -340,16 +388,17 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       Instructions[wc++] = jofIns
       const stmt = node.children![4] as CTree
       compile(stmt, env)
-      Instructions[wc++] = { opcode: OpCodes.POP }
+      Instructions[wc++] = { opcode: OpCodes.CMARKER }
       Instructions[wc++] = {
         opcode: OpCodes.GOTO,
         args: [loopStart]
       }
+      Instructions[wc++] = { opcode: OpCodes.BMARKER }
       jofIns.args = [wc]
     } else if (iterType === 'do') {
       const stmt = node.children![1] as CTree
       compile(stmt, env)
-      Instructions[wc++] = { opcode: OpCodes.POP }
+      Instructions[wc++] = { opcode: OpCodes.CMARKER }
       const expr = node.children![4] as CTree
       compile(expr, env)
       const jofIns = { opcode: OpCodes.JOF } as Instruction
@@ -358,32 +407,48 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
         opcode: OpCodes.GOTO,
         args: [loopStart]
       }
+      Instructions[wc++] = { opcode: OpCodes.BMARKER }
       jofIns.args = [wc]
     } else if (iterType === 'for') {
       const dec = node.children![2] as CTree
       compile(dec, env)
+      loopStart = wc
       const expr = node.children![3] as CTree
       compile(expr, env)
       const jofIns = { opcode: OpCodes.JOF } as Instruction
       Instructions[wc++] = jofIns
-      const stmt = node.children![7] as CTree
+      const stmt = node.children![6] as CTree
       compile(stmt, env)
-      Instructions[wc++] = { opcode: OpCodes.POP }
+      Instructions[wc++] = { opcode: OpCodes.CMARKER }
       const update = node.children![4] as CTree
       compile(update, env)
       Instructions[wc++] = {
         opcode: OpCodes.GOTO,
         args: [loopStart]
       }
+      Instructions[wc++] = { opcode: OpCodes.BMARKER }
       jofIns.args = [wc]
+    }
+    // we treat stmts as value producing by default and pop after, so we load an
+    // undefined here.
+    Instructions[wc++] = {
+      opcode: OpCodes.LDC,
+      args: []
     }
   },
 
-  // children: return token, expr, ';'
+  // children: jump token, ';'
+  //        OR break token, ';'
+  //        OR return token, expr, ';'
+  // return statements can only occur in functions.
   jump_stmt: (node, env) => {
-    if (node.children!.length === 3 && (node.children![0] as Token).lexeme === 'return') {
+    const token = node.children![0] as Token
+    const iterType = token.lexeme as string
+    if (iterType === 'return') {
       compile(node.children![1] as CTree, env)
     }
+    const opcode = VALID_CONTROL_OPERATORS.get(iterType) as OpCodes
+    Instructions[wc++] = { opcode: opcode }
   },
 
   // children: inclusive_or_expr, logical_and_expr_p
@@ -426,21 +491,48 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
   // children: primary_expr, postfix_expr_p
   postfix_expr: (node, env) => {
     const priExp = node.children![0] as CTree
+    compile(priExp, env)
     // children: epsilon
     //        OR unary op token, postfix_expr_p
     //        OR '(', ')', postfix_expr_p
+    //        OR '(', argument_expr_list, ')'
     const posExpP = node.children![1] as CTree
     if (posExpP.children!.length === 1) {
       // variable
-      compile(priExp, env)
     } else if (posExpP.children!.length === 2) {
       // unary operator
-      compile(priExp, env)
+      const loc = lvalueLocation(env, priExp)
       const token = posExpP.children![0] as Token
       const opcode = VALID_UNARY_OPERATORS.get(token.lexeme) as OpCodes
-      Instructions[wc++] = { opcode: opcode }
+      Instructions[wc++] = {
+        opcode: opcode,
+        args: [-1]
+      }
+      Instructions[wc++] = {
+        opcode: OpCodes.ASSIGN,
+        args: loc
+      }
+      Instructions[wc++] = { opcode: OpCodes.POP }
     } else if (posExpP.children!.length === 3) {
-      // function call
+      // function call with no arguments
+      Instructions[wc++] = {
+        opcode: OpCodes.CALL,
+        args: [0]
+      }
+    } else if (posExpP.children!.length === 4) {
+      // function call with arguments
+      // children: assignment expr, argument_expr_list_p
+      //    of _p: assignment_expr, argument_expr_list_p
+      const argExpL = posExpP.children![1] as CTree
+      const list = flatten(argExpL)
+      console.log(list)
+      for (let i = 0; i < list.length; i += 2) {
+        compile(list[i] as CTree, env)
+      }
+      Instructions[wc++] = {
+        opcode: OpCodes.CALL,
+        args: [(list.length + 1) / 2]
+      }
     }
   },
 
@@ -481,7 +573,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     compile(cons, env)
     const gotoIns = { opcode: OpCodes.GOTO } as Instruction
     jofIns.args = [wc]
-    if (node.children!.length === 6) {
+    if (node.children!.length === 7) {
       const alt = node.children![6] as CTree
       compile(alt, env)
     }
@@ -506,7 +598,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
   //        OR compound_stmt
   //        OR iteration_stmt
   //        OR selection_stmt
-  // need to add pop instruction - do after returns
+  // we force statements to be value producing.
   stmt: (node, env) => compile(node.children![0] as CTree, env),
 
   // children: external_declaration, translation_unit_p
@@ -514,7 +606,10 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     const enterIns = { opcode: OpCodes.ENTER_SCOPE } as Instruction
     const newEnv = helpers.extend([], env)
     Instructions[wc++] = enterIns
-    flatten(node).forEach(child => compile(child as CTree, newEnv))
+    flatten(node).forEach(child => {
+      compile(child as CTree, newEnv)
+      Instructions[wc++] = { opcode: OpCodes.POP }
+    })
     enterIns.args = [newEnv[newEnv.length - 1].length]
     Instructions[wc++] = { opcode: OpCodes.EXIT_SCOPE }
   },
@@ -533,7 +628,10 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       compile(node.children![1] as CTree, env)
       const token = node.children![0] as Token
       const opcode = VALID_UNARY_OPERATORS.get(token.lexeme) as OpCodes
-      Instructions[wc++] = { opcode: opcode }
+      Instructions[wc++] = {
+        opcode: opcode,
+        args: [0]
+      }
     }
   }
 }
@@ -545,12 +643,20 @@ function compileToIns(program: CTree, vmInternalFunctions?: string[]): Program {
   initGlobalVar()
   compile(program, GlobalCompileEnvironment)
   if (MainPos[0] === -1 && MainPos[1] === -1) throw new Error('no main function detected')
-  Instructions[wc++] = {
-    opcode: OpCodes.CALL,
+  // replace the last exit scope with loading and calling main
+  Instructions[wc - 1] = {
+    opcode: OpCodes.LD,
     args: MainPos
   }
+  Instructions[wc++] = {
+    opcode: OpCodes.CALL,
+    args: [0]
+  }
+  Instructions[wc++] = { opcode: OpCodes.EXIT_SCOPE }
   Instructions[wc++] = { opcode: OpCodes.DONE }
-  console.log(Instructions)
+  for (let i = 0; i < Instructions.length; i++) {
+    // console.log(i, Instructions[i])
+  }
   return { entry: 0, instrs: Instructions }
 }
 
@@ -558,6 +664,6 @@ function compile(expr: CTree, env: CEnv): void {
   // this is handy to find which expr is not defined
   // console.log("compiling", expr.title)
   const compiler = compilers[expr.title]
-  if (!compiler) throw Error('Unsupported operation')
+  if (!compiler) throw Error('Unsupported operation: ' + expr.title)
   compiler(expr, env)
 }

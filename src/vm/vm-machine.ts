@@ -1,17 +1,19 @@
-import { Environment, Frame } from '../types'
 import { OpCodes } from './opcodes'
 import { Instruction, Program } from './vm-compiler'
 
-// eventually this should be any[]
-let OS: number[] = []
-let PC: number = 0
-let RTS: any[][] = [[], []]
-const E: Environment = {
-  id: 'global',
-  name: 'global',
-  tail: null,
-  head: {}
+// placeholder structures for instruction implementation
+type Env = any[][]
+type Stack = {
+  tag: string
+  addr?: number
+  env?: Env
 }
+
+// eventually this should be any[]
+let OS: any[] = []
+let PC: number = 0
+let RTS: Stack[] = []
+let E: Env = [[], []]
 let INSTRS: Instruction[] = []
 let instr: Instruction
 
@@ -54,9 +56,19 @@ const M: { [code in OpCodes]: () => void } = {
     OS.push(op1 % op2)
   },
 
-  INC: () => OS.push((OS.pop() as number) + 1),
+  INC: () => {
+    // push two values, one to use and one to assign
+    const op = (OS.pop() as number) + 1
+    OS.push((op + instr.args![0]) as number)
+    OS.push(op)
+  },
 
-  DEC: () => OS.push((OS.pop() as number) - 1),
+  DEC: () => {
+    // push two values, one to use and one to assign
+    const op = (OS.pop() as number) - 1
+    OS.push((op - instr.args![0]) as number)
+    OS.push(op)
+  },
 
   EQ: () => {
     const op2 = OS.pop() as number
@@ -136,49 +148,100 @@ const M: { [code in OpCodes]: () => void } = {
     OS.push(op1 || op2 !== 0 ? 1 : 0)
   },
 
-  RET: () => {},
-
-  LDF: () => {},
-
-  LD: () => {},
-
-  GOTO: () => {
-    // PC = instr.args![0] as number
+  LDF: () => {
+    OS.push({
+      tag: 'CLOSURE',
+      arity: instr.args![0],
+      addr: instr.args![1],
+      env: E
+    })
   },
 
-  ASSIGN: () => {},
+  LD: () => OS.push(E[instr.args![0]][instr.args![1]]),
 
-  CALL: () => {},
+  GOTO: () => (PC = instr.args![0] as number),
 
-  JOF: () => {},
+  ASSIGN: () => (E[instr.args![0]][instr.args![1]] = OS.slice(-1)[0]),
 
-  POP: () => {
-    OS.pop()
+  CALL: () => {
+    const arity = instr.args![0]
+    const args = []
+    for (let i = arity - 1; i >= 0; i--) {
+      args[i] = OS.pop()
+    }
+    const closure = OS.pop()
+    RTS.push({
+      tag: 'CALL_FRAME',
+      addr: PC,
+      env: E
+    })
+    E = [...closure.env!, args]
+    PC = closure.addr!
   },
 
-  RESET: () => {},
+  JOF: () => (PC = OS.pop() ? PC : instr.args![0]),
+
+  POP: () => OS.pop(),
+
+  RESET: () => {
+    const topFrame = RTS.pop() as Stack
+    if (topFrame.tag == 'CALL_FRAME') {
+      PC = topFrame.addr!
+      E = topFrame.env!
+    } else {
+      PC--
+    }
+  },
+
+  BREAK: () => {
+    while (INSTRS[PC++].opcode != OpCodes.BMARKER) {}
+  },
+
+  BMARKER: () => {},
+
+  CONT: () => {
+    while (INSTRS[PC++].opcode != OpCodes.CMARKER) {}
+  },
+
+  CMARKER: () => {},
+
+  RET: () => {
+    while (INSTRS[PC++].opcode != OpCodes.RMARKER) {}
+  },
+
+  RMARKER: () => {},
+
+  ENTER_SCOPE: () => {
+    RTS.push({
+      tag: 'BLOCK_FRAME',
+      env: E
+    })
+    E.push([])
+  },
+
+  EXIT_SCOPE: () => {
+    E = (RTS.pop() as Stack).env!
+  },
 
   DONE: () => {}
 }
 
-// TODO (feature - bottleneck):
-// 1. run-time stack - function support
-// 2. environments - prelude functions + declaration/assignment + scoping
-// 3. heap
 export function runWithProgram(p: Program): any {
   const ENTRY = p.entry
   INSTRS = p.instrs
   OS = []
   PC = ENTRY
-  RTS = [[], []]
+  RTS = []
 
   while (INSTRS[PC].opcode !== OpCodes.DONE) {
     instr = INSTRS[PC++]
+    // console.log("running PC: ", PC - 1, " instr: ", instr)
+    // console.log("OS: ", OS)
+    // console.log("E: ", E)
     M[instr.opcode]()
   }
 
-  // currently returns the top-most value of the operand stack, but shouldn't
-  // return anything
+  // main functions guarantee a return.
   const top = OS.slice(-1)[0]
   return top
 }
