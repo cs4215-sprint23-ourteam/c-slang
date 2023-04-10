@@ -48,7 +48,9 @@ const VALID_SHIFT_OPERATORS = new Map([
 
 const VALID_UNARY_OPERATORS = new Map([
   ['++', OpCodes.INC],
-  ['--', OpCodes.DEC]
+  ['--', OpCodes.DEC],
+  ['*', OpCodes.DEREF],
+  ['&', OpCodes.REF]
 ])
 
 /* for future use
@@ -116,11 +118,14 @@ const helpers = {
 }
 
 // handles (declaration_specifier, declarator) pair
-// children: (pointer)*, direct_declarator
+// children of declarator: (pointer)*, direct_declarator
 function createName(decSpe: CTree, dec: CTree, env: CEnv): string {
   // handle declaration_specifier here
 
-  const dir_dec = dec.children![0]
+  let dir_dec = dec.children![0]
+  if (dec.children!.length === 2) {
+    dir_dec = dec.children![1]
+  }
   const name = (dir_dec.children![0] as Token).lexeme as string
   helpers.declare(name, env[env.length - 1])
   return name
@@ -141,22 +146,25 @@ function flatten(node: CTree): (CTree | Token)[] {
 
 // this is a compiler level check - assignment and unary operators should only
 // accept lvalues. lvalues are locations in memory that identifies as objects.
-// we should ONLY run this check on unary_expr OR primary_expr, wherein the structure we are
-// looking for is:
-// unary_expr
-//  => postfix_expr
-//    => primary_expr (guaranteed)
-//      => (constant or) identifier token
-//    => postfix_expr_p (guaranteed)
-//      => EPSILON (or others of length != 1)
+// we should ONLY run this check on cast_expr, unary_expr OR primary_expr, wherein the
+// structure we are looking for is:
+//  cast_expr
+//   => unary_expr
+//    => postfix_expr
+//      => primary_expr (guaranteed)
+//        => (constant or) identifier token
+//      => postfix_expr_p (guaranteed)
+//        => EPSILON (or others of length != 1)
 // note that unary_expr can also have unary_token, unary_expr children.
 // we can skip some sanity checks because of the above guarantees.
 // reject everything else.
 function lvalueCheck(node: CTree): boolean {
-  return node.title === 'unary_expr'
+  return node.title === 'cast_expr'
+    ? lvalueCheck(node.children![0] as CTree)
+    : node.title === 'unary_expr'
     ? node.children!.length === 1 &&
-        lvalueCheck(node.children![0].children![0] as CTree) &&
-        node.children![0].children![1].children!.length === 1
+      lvalueCheck(node.children![0].children![0] as CTree) &&
+      node.children![0].children![1].children!.length === 1
     : node.title === 'primary_expr'
     ? (node.children![0] as Token).tokenClass === 'IDENTIFIER'
     : false
@@ -166,7 +174,9 @@ function lvalueLocation(env: CEnv, node: CTree): [number, number] {
   if (!lvalueCheck(node)) throw new Error('lvalue required for left side of operation')
   return helpers.find(
     env,
-    node.title === 'unary_expr'
+    node.title === 'cast_expr'
+      ? (node.children![0].children![0].children![0].children![0] as Token).lexeme
+      : node.title === 'unary_expr'
       ? (node.children![0].children![0].children![0] as Token).lexeme
       : (node.children![0] as Token).lexeme
   )
@@ -692,18 +702,28 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       compile(node.children![0] as CTree, env)
     } else if (node.children!.length === 2) {
       const loc = lvalueLocation(env, node.children![1] as CTree)
-      compile(node.children![1] as CTree, env)
-      const token = node.children![0] as Token
-      const opcode = VALID_UNARY_OPERATORS.get(token.lexeme) as OpCodes
-      Instructions[wc++] = {
-        opcode: opcode,
-        args: [0]
+      if ('lexeme' in node.children![0]) {
+        compile(node.children![1] as CTree, env)
+        const token = node.children![0] as Token
+        const opcode = VALID_UNARY_OPERATORS.get(token.lexeme) as OpCodes
+        Instructions[wc++] = {
+          opcode: opcode,
+          args: [0]
+        }
+        Instructions[wc++] = {
+          opcode: OpCodes.ASSIGN,
+          args: loc
+        }
+        Instructions[wc++] = { opcode: OpCodes.POP }
+      } else {
+        const unaOp = node.children![0] as CTree
+        const token = unaOp.children![0] as Token
+        const opcode = VALID_UNARY_OPERATORS.get(token.lexeme) as OpCodes
+        Instructions[wc++] = {
+          opcode: opcode,
+          args: loc
+        }
       }
-      Instructions[wc++] = {
-        opcode: OpCodes.ASSIGN,
-        args: loc
-      }
-      Instructions[wc++] = { opcode: OpCodes.POP }
     }
   }
 }

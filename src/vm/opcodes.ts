@@ -11,6 +11,8 @@ export enum OpCodes {
   MOD = 'MOD',
   INC = 'INC',
   DEC = 'DEC',
+  DEREF = 'DEREF',
+  REF = 'REF',
   EQ = 'EQ',
   NE = 'NE',
   GEQ = 'GEQ',

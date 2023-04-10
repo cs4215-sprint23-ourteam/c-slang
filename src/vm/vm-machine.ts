@@ -76,9 +76,16 @@ const M: { [code in OpCodes]: () => void } = {
     OS.push(op)
   },
 
-  DEREF: () => {},
+  DEREF: () => {
+    // we should dereference the pointer here.
+    const op = E[instr.args![0]][instr.args![1]] as number
+    OS.push(E[Math.floor(op / 10)][op % 10])
+  },
 
-  REF: () => {},
+  REF: () => {
+    // we should get the address here. for now we just push a dummy value
+    OS.push((10 * instr.args![0] + instr.args![1]) as number)
+  },
 
   EQ: () => {
     const op2 = popOS() as number
