@@ -17,6 +17,12 @@ let E: Env = [[], []]
 let INSTRS: Instruction[] = []
 let instr: Instruction
 
+// wrapper for testing
+function popOS(): any {
+  if (OS.length === 0) throw new Error('popping empty OS')
+  return OS.pop()
+}
+
 // microcode
 const M: { [code in OpCodes]: () => void } = {
   NOP: () => {},
@@ -27,124 +33,128 @@ const M: { [code in OpCodes]: () => void } = {
   },
 
   ADD: () => {
-    const op2 = OS.pop() as number
-    const op1 = OS.pop() as number
+    const op2 = popOS() as number
+    const op1 = popOS() as number
     OS.push(op1 + op2)
   },
 
   SUB: () => {
-    const op2 = OS.pop() as number
-    const op1 = OS.pop() as number
+    const op2 = popOS() as number
+    const op1 = popOS() as number
     OS.push(op1 - op2)
   },
 
   MUL: () => {
-    const op2 = OS.pop() as number
-    const op1 = OS.pop() as number
+    const op2 = popOS() as number
+    const op1 = popOS() as number
     OS.push(op1 * op2)
   },
 
   DIV: () => {
-    const op2 = OS.pop() as number
-    const op1 = OS.pop() as number
+    const op2 = popOS() as number
+    const op1 = popOS() as number
     OS.push(op1 / op2)
   },
 
   MOD: () => {
-    const op2 = OS.pop() as number
-    const op1 = OS.pop() as number
+    const op2 = popOS() as number
+    const op1 = popOS() as number
     OS.push(op1 % op2)
   },
 
   INC: () => {
     // push two values, one to use and one to assign
-    const op = (OS.pop() as number) + 1
+    const op = (popOS() as number) + 1
     OS.push((op + instr.args![0]) as number)
     OS.push(op)
   },
 
   DEC: () => {
     // push two values, one to use and one to assign
-    const op = (OS.pop() as number) - 1
+    const op = (popOS() as number) - 1
     OS.push((op - instr.args![0]) as number)
     OS.push(op)
   },
 
+  DEREF: () => {},
+
+  REF: () => {},
+
   EQ: () => {
-    const op2 = OS.pop() as number
-    const op1 = OS.pop() as number
+    const op2 = popOS() as number
+    const op1 = popOS() as number
     OS.push(op1 === op2 ? 1 : 0)
   },
 
   NE: () => {
-    const op2 = OS.pop() as number
-    const op1 = OS.pop() as number
+    const op2 = popOS() as number
+    const op1 = popOS() as number
     OS.push(op1 !== op2 ? 1 : 0)
   },
 
   GEQ: () => {
-    const op2 = OS.pop() as number
-    const op1 = OS.pop() as number
+    const op2 = popOS() as number
+    const op1 = popOS() as number
     OS.push(op1 >= op2 ? 1 : 0)
   },
 
   GT: () => {
-    const op2 = OS.pop() as number
-    const op1 = OS.pop() as number
+    const op2 = popOS() as number
+    const op1 = popOS() as number
     OS.push(op1 > op2 ? 1 : 0)
   },
 
   LEQ: () => {
-    const op2 = OS.pop() as number
-    const op1 = OS.pop() as number
+    const op2 = popOS() as number
+    const op1 = popOS() as number
     OS.push(op1 <= op2 ? 1 : 0)
   },
 
   LT: () => {
-    const op2 = OS.pop() as number
-    const op1 = OS.pop() as number
+    const op2 = popOS() as number
+    const op1 = popOS() as number
     OS.push(op1 < op2 ? 1 : 0)
   },
 
   LEFT: () => {
-    const op2 = OS.pop() as number
-    const op1 = OS.pop() as number
+    const op2 = popOS() as number
+    const op1 = popOS() as number
     OS.push(op1 << op2)
   },
 
   RIGHT: () => {
-    const op2 = OS.pop() as number
-    const op1 = OS.pop() as number
+    const op2 = popOS() as number
+    const op1 = popOS() as number
     OS.push(op1 >> op2)
   },
 
   BAND: () => {
-    const op2 = OS.pop() as number
-    const op1 = OS.pop() as number
+    const op2 = popOS() as number
+    const op1 = popOS() as number
     OS.push(op1 & op2)
   },
 
   BOR: () => {
-    const op2 = OS.pop() as number
-    const op1 = OS.pop() as number
+    const op2 = popOS() as number
+    const op1 = popOS() as number
     OS.push(op1 | op2)
   },
 
   XOR: () => {
-    const op2 = OS.pop() as number
-    const op1 = OS.pop() as number
+    const op2 = popOS() as number
+    const op1 = popOS() as number
     OS.push(op1 ^ op2)
   },
 
   AND: () => {
-    const op2 = OS.pop() as number
-    const op1 = OS.pop() as number
+    const op2 = popOS() as number
+    const op1 = popOS() as number
     OS.push(op1 && op2 !== 0 ? 1 : 0)
   },
 
   OR: () => {
-    const op2 = OS.pop() as number
-    const op1 = OS.pop() as number
+    const op2 = popOS() as number
+    const op1 = popOS() as number
     OS.push(op1 || op2 !== 0 ? 1 : 0)
   },
 
@@ -187,21 +197,21 @@ const M: { [code in OpCodes]: () => void } = {
     const arity = instr.args![0]
     const args = []
     for (let i = arity - 1; i >= 0; i--) {
-      args[i] = OS.pop()
+      args[i] = popOS()
     }
-    const closure = OS.pop()
+    const closure = popOS()
     RTS.push({
       tag: 'CALL_FRAME',
       addr: PC,
-      env: E
+      env: [...E]
     })
-    E = [...closure.env!, args, []]
+    E = [...closure.env!, args]
     PC = closure.addr!
   },
 
-  JOF: () => (PC = OS.pop() ? PC : instr.args![0]),
+  JOF: () => (PC = popOS() ? PC : instr.args![0]),
 
-  POP: () => OS.pop(),
+  POP: () => popOS(),
 
   RESET: () => {
     const topFrame = RTS.pop() as Stack
@@ -215,12 +225,14 @@ const M: { [code in OpCodes]: () => void } = {
 
   BREAK: () => {
     while (INSTRS[PC++].opcode != OpCodes.BMARKER) {}
+    popOS()
   },
 
   BMARKER: () => {},
 
   CONT: () => {
     while (INSTRS[PC++].opcode != OpCodes.CMARKER) {}
+    popOS()
   },
 
   CMARKER: () => {},
@@ -234,7 +246,7 @@ const M: { [code in OpCodes]: () => void } = {
   ENTER_SCOPE: () => {
     RTS.push({
       tag: 'BLOCK_FRAME',
-      env: E
+      env: [...E]
     })
     E.push([])
   },
@@ -255,10 +267,11 @@ export function runWithProgram(p: Program): any {
 
   while (INSTRS[PC].opcode !== OpCodes.DONE) {
     instr = INSTRS[PC++]
-    // console.log('running PC: ', PC - 1, ' instr: ', instr)
-    // console.log('OS: ', OS)
-    // console.log('E: ', E)
+    console.log('running PC: ', PC - 1, ' instr: ', instr)
     M[instr.opcode]()
+    console.log('OS: ', OS)
+    // console.log('E: ', E)
+    // console.log('RTS: ', RTS, '\n')
   }
 
   // main functions guarantee a return.
