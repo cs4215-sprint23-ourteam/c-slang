@@ -71,19 +71,12 @@ const TYPES = new Map([
   ['long', makeSigned(BaseType.long)]
 ])
 
-/* for future use
-export type Offset = number // instructions to skip
-export type Address = [
-  number, // function index
-  number? // instruction index within function; optional
-]
-*/
 export type Instruction = {
   opcode: OpCodes
   args?: Argument[]
 }
 
-export type Argument = number // | Offset | Address
+export type Argument = number
 export type Program = {
   entry: number
   instrs: Instruction[]
@@ -153,16 +146,6 @@ const helpers = {
 // function pointers are characterized by 1. a pointer and 2. (args...) after the
 // name.
 function createName(baseType: Type, dec: CTree, env: CEnv, funcPtr: boolean = true): string {
-  // let dir_dec = dec.children![0]
-  // let newType = type
-  // if (dec.children!.length === 2) {
-  //   newType = updateTypeWithPointer(newType, dec.children![0] as CTree)
-  //   dir_dec = dec.children![1]
-  //   const dir_dec_p = dir_dec.children![1] as CTree
-  //   if (dir_dec_p.children!.length === 1) {
-  //   }
-  // }
-  // const name = (dir_dec.children![0] as Token).lexeme as string
   const arr = extractName(baseType, dec)
   const name = arr[0] as string
   let type = arr[1] as Type
@@ -1002,7 +985,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
 // prelude refers to predefined functions in C (like malloc)
 // vmInternalFunctions refers to functions not called by users (like clearing the RTS)
 // they are both empty for now but we'll add to them as development progresses
-function compileToIns(program: CTree, vmInternalFunctions?: string[]): Program {
+function compileToIns(program: CTree): Program {
   initGlobalVar()
   compile(program, GlobalCompileEnvironment)
   if (MainPos[0] === -1 && MainPos[1] === -1) throw new Error('no main function detected')
