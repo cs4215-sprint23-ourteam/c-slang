@@ -1,6 +1,15 @@
 import { CTree, Token } from '../parser/tree'
 import { OpCodes } from './opcodes'
-import { BaseType, compareTypes, makeSigned, SignedType, Type, UndeclaredType } from './types'
+import {
+  BaseType,
+  compareTypes,
+  FunctionType,
+  makeFunctionType,
+  makeSigned,
+  SignedType,
+  Type,
+  UndeclaredType
+} from './types'
 
 const VALID_ASSIGNMENT_OPERATORS = new Map([
   ['=', OpCodes.ASSIGN],
@@ -91,8 +100,6 @@ type CEnv = CFrame[]
 let wc = 0
 let Instructions: Instruction[] = []
 let MainPos: [number, number] = [-1, -1]
-const FunctionArityMap: { [name: string]: number } = {}
-const FunctionParamTypeMap: { [name: string]: Type[] } = {}
 const BuiltInFunctionNames: CFrame = []
 const ConstantNames: CFrame = []
 const GlobalCompileEnvironment: CEnv = [BuiltInFunctionNames, ConstantNames]
@@ -112,7 +119,7 @@ function initGlobalVar() {
 const helpers = {
   declare: (name: string, type: Type, frame: CFrame): void => {
     frame.forEach(cname => {
-      if (cname.name == name) throw new Error('declaring existing name')
+      if (cname.name == name) throw new Error('declaring existing name ' + name)
     })
     frame.push({
       name: name,
@@ -122,7 +129,7 @@ const helpers = {
   extend: (frame: CFrame, env: CEnv): CEnv => [...env, frame],
   find: (env: CEnv, name: string): [number, number] => {
     const loc = helpers.position(env, name)
-    if (loc[0] === -1 && loc[1] === -1) throw new Error('undeclared name used')
+    if (loc[0] === -1 && loc[1] === -1) throw new Error('undeclared name ' + name + ' used')
     return loc
   },
   lookup: (frame: CFrame, name: string): number => {
@@ -139,23 +146,74 @@ const helpers = {
   }
 }
 
-// handles (Type, declarator) pair
+// handles (Type, declarator) pair - top level declarators only
 // children of declarator: pointer, direct_declarator
-// children of pointer: pointer token
-//                   OR pointer token, pointer
-//                   OR pointer token, type_qualifier_list
-//                   OR pointer token, type_qualifier_list, pointer
-function createName(type: Type, dec: CTree, env: CEnv): string {
-  let dir_dec = dec.children![0]
-  let newType = type
-  if (dec.children!.length === 2) {
-    newType = updateTypeWithPointer(newType, dec.children![0] as CTree)
-    dir_dec = dec.children![1]
+// children of direct_declarator: id_token, direct_declarator_p
+//                            OR '(', declarator, ')', direct_declarator_p
+// function pointers are characterized by 1. a pointer and 2. (args...) after the
+// name.
+function createName(baseType: Type, dec: CTree, env: CEnv, funcPtr: boolean = true): string {
+  // let dir_dec = dec.children![0]
+  // let newType = type
+  // if (dec.children!.length === 2) {
+  //   newType = updateTypeWithPointer(newType, dec.children![0] as CTree)
+  //   dir_dec = dec.children![1]
+  //   const dir_dec_p = dir_dec.children![1] as CTree
+  //   if (dir_dec_p.children!.length === 1) {
+  //   }
+  // }
+  // const name = (dir_dec.children![0] as Token).lexeme as string
+  const arr = extractName(baseType, dec)
+  const name = arr[0] as string
+  let type = arr[1] as Type
+
+  if (arr[2] !== undefined && funcPtr) {
+    // naming becomes atrocious at 6am
+    let paramsList = [] as Type[]
+    if (arr[2] !== null) {
+      const parTypeList = arr[2]
+      const parList = parTypeList.children![0] as CTree
+      const params = parList.listItems
+      paramsList = params.map(parDec => createTypeFromList(parDec.children![0] as CTree)) as Type[]
+    }
+    // dereference the pointer
+    type = makeFunctionType(type.child as Type, paramsList)
   }
-  const name = (dir_dec.children![0] as Token).lexeme as string
-  helpers.declare(name, newType, env[env.length - 1])
-  TypeStack.push(newType)
+  helpers.declare(name, type, env[env.length - 1])
+  TypeStack.push(type)
   return name
+}
+
+// recursively delves into a declarator node to extract the type and name
+// of the object. if at any point we find some argument_list we know it's
+// a function pointer.
+function extractName(baseType: Type, dec: CTree): [string, Type, CTree | undefined | null] {
+  let type = baseType
+  let node = dec
+  let params = undefined
+  while (true) {
+    let dir_dec = node.children![0]
+    if (node.children!.length === 2) {
+      const pointer = node.children![0] as CTree
+      type = updateTypeWithPointer(type, pointer)
+      dir_dec = node.children![1] as CTree
+    }
+    const dir_dec_p = dir_dec.children![dir_dec.children!.length - 1]
+    if (dir_dec_p.children!.length === 3) {
+      params = null
+    } else if (dir_dec_p.children!.length === 4) {
+      // some param list exists
+      params = dir_dec_p.children![1] as CTree
+    }
+    if (dir_dec.children!.length === 2) {
+      // id token found
+      const name = (dir_dec.children![0] as Token).lexeme as string
+      return [name, type, params]
+    } else if (dir_dec.children!.length === 4) {
+      // the search continues...
+      node = dir_dec.children![1] as CTree
+    }
+  }
 }
 
 // both specifier_qualifier_list and declaration_specifiers have the same children
@@ -185,10 +243,6 @@ function createTypeFromList(decSpe: CTree): Type {
 
 // children of type_name: specifier_qualifier_list
 //                    OR  specifier_qualifier_list, abstract_declarator
-// children of specifier_qualifier_list: type_qualifier
-//                                    OR type_specifier
-//                                    OR type_qualifier, specifier_qualifier_list
-//                                    OR type_specifier, specifier_qualifier_list
 // children of abstract_declarator: pointer
 function createTypeFromTypeName(typeName: CTree): Type {
   const listNode = typeName.children![0] as CTree
@@ -200,6 +254,10 @@ function createTypeFromTypeName(typeName: CTree): Type {
   return type
 }
 
+// children of pointer: pointer token
+//                   OR pointer token, pointer
+//                   OR pointer token, type_qualifier_list
+//                   OR pointer token, type_qualifier_list, pointer
 function updateTypeWithPointer(type: Type, pointer: CTree): Type {
   let newType = type
   while (true) {
@@ -293,12 +351,14 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     const list = flatten(node)
     compile(list[0] as CTree, env)
     for (let i = 1; i < list.length; i += 2) {
-      if ('type'! in TypeStack.pop()!.child) throw new Error('invalid operands to binary + or -')
+      const type = TypeStack.pop()!
+      if (type.depth > 0) throw new Error('invalid operands to binary + or -')
       const token = list[i] as Token
       const opcode = VALID_BINARY_OPERATORS.get(token.lexeme) as OpCodes
       compile(list[i + 1] as CTree, env)
-      if ('type'! in TypeStack.pop()!.child) throw new Error('invalid operands to binary + or -')
+      if (TypeStack.pop()!.depth > 0) throw new Error('invalid operands to binary + or -')
       Instructions[wc++] = { opcode: opcode }
+      TypeStack.push(type)
     }
   },
 
@@ -308,10 +368,12 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     const list = flatten(node)
     compile(list[0] as CTree, env)
     for (let i = 1; i < list.length; i += 2) {
-      if ('type'! in TypeStack.pop()!.child) throw new Error('invalid operands to binary &')
+      const type = TypeStack.pop()!
+      if (type.depth > 0) throw new Error('invalid operands to binary &')
       compile(list[i + 1] as CTree, env)
-      if ('type'! in TypeStack.pop()!.child) throw new Error('invalid operands to binary &')
+      if (TypeStack.pop()!.depth > 0) throw new Error('invalid operands to binary &')
       Instructions[wc++] = { opcode: OpCodes.BAND }
+      TypeStack.push(type)
     }
   },
 
@@ -432,7 +494,10 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
           args: []
         }
       }
+      Instructions[wc++] = { opcode: OpCodes.POP }
     }
+    Instructions.pop()
+    wc--
   },
 
   // children: type_specifier
@@ -489,7 +554,9 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     const decSpe = node.children![0] as CTree
     const type = createTypeFromList(decSpe)
     const dec = node.children![1] as CTree
-    const funcName = createName(type, dec, env)
+    const funcName = createName(type, dec, env, false)
+    // const funcName = pair[0]
+    // const funcType = pair[1]
     returnType = TypeStack.pop()!
     const funcLoc = helpers.find(env, funcName)
     if (funcName == 'main') MainPos = funcLoc
@@ -519,8 +586,8 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       arity = params.length
     }
 
-    FunctionArityMap[funcName] = arity
-    FunctionParamTypeMap[funcName] = paramTypes
+    const loc = helpers.find(env, funcName)
+    env[loc[0]][loc[1]].type = makeFunctionType(env[loc[0]][loc[1]].type, paramTypes)
 
     Instructions[wc++] = {
       opcode: OpCodes.LDF,
@@ -548,10 +615,12 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     const list = flatten(node)
     compile(list[0] as CTree, env)
     for (let i = 1; i < list.length; i += 2) {
-      if ('type'! in TypeStack.pop()!.child) throw new Error('invalid operands to binary |')
+      const type = TypeStack.pop()!
+      if (type.depth > 0) throw new Error('invalid operands to binary |')
       compile(list[i + 1] as CTree, env)
-      if ('type'! in TypeStack.pop()!.child) throw new Error('invalid operands to binary |')
+      if (TypeStack.pop()!.depth > 0) throw new Error('invalid operands to binary |')
       Instructions[wc++] = { opcode: OpCodes.BOR }
+      TypeStack.push(type)
     }
   },
 
@@ -649,7 +718,6 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
         compile(node.children![1] as CTree, env)
         type = TypeStack.pop()!
       }
-      // const returnType = TypeStack.slice(-1)[0]
       if (
         returnType.depth === 0 &&
         (returnType.child as SignedType).type === BaseType.void &&
@@ -698,12 +766,14 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     const list = flatten(node)
     compile(list[0] as CTree, env)
     for (let i = 1; i < list.length; i += 2) {
-      if ('type'! in TypeStack.pop()!.child) throw new Error('invalid operands to binary * or /')
+      const type = TypeStack.pop()!
+      if (type.depth > 0) throw new Error('invalid operands to binary * or /')
       const token = list[i] as Token
       const opcode = VALID_BINARY_OPERATORS.get(token.lexeme) as OpCodes
       compile(list[i + 1] as CTree, env)
-      if ('type'! in TypeStack.pop()!.child) throw new Error('invalid operands to binary * or /')
+      if (TypeStack.pop()!.depth > 0) throw new Error('invalid operands to binary * or /')
       Instructions[wc++] = { opcode: opcode }
+      TypeStack.push(type)
     }
   },
 
@@ -735,7 +805,18 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     } else if (posExpP.children!.length === 3) {
       // function call with no arguments
       const name = (priExp.children![0] as Token).lexeme
-      if (FunctionArityMap[name] !== 0) throw new Error('too few arguments to function ' + name)
+
+      // we only get to this segment with function calls
+      const loc = helpers.find(env, name)
+      const type = env[loc[0]][loc[1]].type as FunctionType
+      const params = type.params
+      if (params.length !== 0) throw new Error('too few arguments to function ' + name)
+
+      TypeStack.push({
+        child: type.child,
+        const: type.const,
+        depth: type.depth
+      })
 
       Instructions[wc++] = {
         opcode: OpCodes.CALL,
@@ -753,12 +834,22 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       const arity = (list.length + 1) / 2
       const name = (priExp.children![0] as Token).lexeme
 
-      if (FunctionArityMap[name] > arity) throw new Error('too few arguments to function ' + name)
-      if (FunctionArityMap[name] < arity) throw new Error('too many arguments to function ' + name)
+      // we also only get to this segment with function calls
+      const loc = helpers.find(env, name)
+      const type = env[loc[0]][loc[1]].type as FunctionType
+      const params = type.params
+      if (params.length > arity) throw new Error('too few arguments to function ' + name)
+      if (params.length < arity) throw new Error('too many arguments to function ' + name)
 
-      for (let i = FunctionParamTypeMap[name].length - 1; i >= 0; i--) {
-        compareTypes(FunctionParamTypeMap[name][i], TypeStack.pop()!, true)
+      for (let i = params.length - 1; i >= 0; i--) {
+        compareTypes(params[i], TypeStack.pop()!)
       }
+
+      TypeStack.push({
+        child: type.child,
+        const: type.const,
+        depth: type.depth
+      })
 
       Instructions[wc++] = {
         opcode: OpCodes.CALL,

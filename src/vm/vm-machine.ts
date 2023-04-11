@@ -274,9 +274,9 @@ export function runWithProgram(p: Program): any {
 
   while (INSTRS[PC].opcode !== OpCodes.DONE) {
     instr = INSTRS[PC++]
-    console.log('running PC: ', PC - 1, ' instr: ', instr)
+    // console.log('running PC: ', PC - 1, ' instr: ', instr)
     M[instr.opcode]()
-    console.log('OS: ', OS)
+    // console.log('OS: ', OS)
     // console.log('E: ', E)
     // console.log('RTS: ', RTS, '\n')
   }
