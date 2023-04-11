@@ -538,8 +538,6 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     const type = createTypeFromList(decSpe)
     const dec = node.children![1] as CTree
     const funcName = createName(type, dec, env, false)
-    // const funcName = pair[0]
-    // const funcType = pair[1]
     returnType = TypeStack.pop()!
     const funcLoc = helpers.find(env, funcName)
     if (funcName == 'main') MainPos = funcLoc
