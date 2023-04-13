@@ -1,19 +1,23 @@
-import { OpCodes } from './opcodes'
+import { debugGetStack, getValueFromAddr, setValueToAddr } from './mem-utils'
+import { builtins, OpCodes } from './opcodes'
+import { BaseType } from './types'
 import { Instruction, Program } from './vm-compiler'
 
 // placeholder structures for instruction implementation
-type Env = any[][]
-type Stack = {
-  tag: string
-  addr?: number
-  env?: Env
-}
+// type Env = any[][]
+// type Stack = {
+//   tag: string
+//   addr?: number
+//   env?: Env
+// }
 
 // eventually this should be any[]
 let OS: any[] = []
 let PC: number = 0
-let RTS: Stack[] = []
-let E: Env = [[], []]
+// let RTS: Stack[] = []
+// let E: Env = [[], []]
+let ESP = 0
+let EBP = 0
 let INSTRS: Instruction[] = []
 let instr: Instruction
 
@@ -23,13 +27,27 @@ function popOS(): any {
   return OS.pop()
 }
 
+const BUILTINS: { [code in builtins]: () => void } = {
+  // malloc
+  0: () => {},
+  // free
+  1: () => {},
+  // debug display heap
+  2: () => {},
+  // printf
+  3: () => {}
+}
+
 // microcode
 const M: { [code in OpCodes]: () => void } = {
   NOP: () => {},
 
   LDC: () => {
-    const op = instr.args![0] as number
-    OS.push(op)
+    if (instr.args === undefined || instr.args.length === 0) OS.push(undefined)
+    else {
+      const op = instr.args[0] as number
+      OS.push(op)
+    }
   },
 
   ADD: () => {
@@ -82,13 +100,15 @@ const M: { [code in OpCodes]: () => void } = {
 
   DEREF: () => {
     // we should dereference the pointer here.
-    const op = E[instr.args![0]][instr.args![1]] as number
-    OS.push(E[Math.floor(op / 10)][op % 10])
+    // const op = E[instr.args![0]][instr.args![1]] as number
+    // OS.push(E[Math.floor(op / 10)][op % 10])
+    // TODO
   },
 
   REF: () => {
     // we should get the address here. for now we just push a dummy value
-    OS.push((10 * instr.args![0] + instr.args![1]) as number)
+    // OS.push((10 * instr.args![0] + instr.args![1]) as number)
+    // TODO
   },
 
   EQ: () => {
@@ -170,54 +190,92 @@ const M: { [code in OpCodes]: () => void } = {
   },
 
   LDF: () => {
-    OS.push({
-      tag: 'CLOSURE',
-      arity: instr.args![0],
-      addr: instr.args![1],
-      env: E
-    })
+    OS.push(instr.args![0])
   },
 
-  LD: () => OS.push(E[instr.args![0]][instr.args![1]]),
+  LD: () => OS.push(getValueFromAddr(EBP + instr.args![0], instr.args![1])),
 
   GOTO: () => (PC = instr.args![0] as number),
 
-  ASSIGN: () => (E[instr.args![0]][instr.args![1]] = OS.slice(-1)[0]),
+  ASSIGN: () => setValueToAddr(EBP + instr.args![0], instr.args![1], OS.slice(-1)[0]),
 
-  ADD_ASSIGN: () => (E[instr.args![0]][instr.args![1]] += OS.slice(-1)[0] * instr.args![2]),
+  EXS: () => {
+    ESP += instr.args![0]
+  },
 
-  SUB_ASSIGN: () => (E[instr.args![0]][instr.args![1]] -= OS.slice(-1)[0] * instr.args![2]),
+  PUSH: () => {
+    const size = instr.args![0]
+    setValueToAddr(ESP, size, OS.pop()!)
+    ESP += size
+  },
 
-  MUL_ASSIGN: () => (E[instr.args![0]][instr.args![1]] *= OS.slice(-1)[0]),
+  LDB: () => {
+    OS.push(EBP)
+  },
 
-  DIV_ASSIGN: () => (E[instr.args![0]][instr.args![1]] /= OS.slice(-1)[0]),
+  ASGB: () => {
+    EBP = OS.pop()!
+  },
 
-  MOD_ASSIGN: () => (E[instr.args![0]][instr.args![1]] %= OS.slice(-1)[0]),
+  LDS: () => {
+    OS.push(ESP)
+  },
 
-  LEFT_ASSIGN: () => (E[instr.args![0]][instr.args![1]] <<= OS.slice(-1)[0]),
+  LDPC: () => {
+    OS.push(PC)
+  },
 
-  RIGHT_ASSIGN: () => (E[instr.args![0]][instr.args![1]] >>= OS.slice(-1)[0]),
-
-  XOR_ASSIGN: () => (E[instr.args![0]][instr.args![1]] ^= OS.slice(-1)[0]),
-
-  AND_ASSIGN: () => (E[instr.args![0]][instr.args![1]] &= OS.slice(-1)[0]),
-
-  OR_ASSIGN: () => (E[instr.args![0]][instr.args![1]] |= OS.slice(-1)[0]),
+  ADD_ASSIGN: () => {
+    const original = getValueFromAddr(instr.args![0], instr.args![1])
+    setValueToAddr(instr.args![0], instr.args![1], original + OS.slice(-1)[0])
+  },
+  SUB_ASSIGN: () => {
+    const original = getValueFromAddr(instr.args![0], instr.args![1])
+    setValueToAddr(instr.args![0], instr.args![1], original - OS.slice(-1)[0])
+  },
+  MUL_ASSIGN: () => {
+    const original = getValueFromAddr(instr.args![0], instr.args![1])
+    setValueToAddr(instr.args![0], instr.args![1], original * OS.slice(-1)[0])
+  },
+  DIV_ASSIGN: () => {
+    const original = getValueFromAddr(instr.args![0], instr.args![1])
+    setValueToAddr(instr.args![0], instr.args![1], Math.floor(original / OS.slice(-1)[0]))
+  },
+  MOD_ASSIGN: () => {
+    const original = getValueFromAddr(instr.args![0], instr.args![1])
+    setValueToAddr(instr.args![0], instr.args![1], original % OS.slice(-1)[0])
+  },
+  LEFT_ASSIGN: () => {
+    const original = getValueFromAddr(instr.args![0], instr.args![1])
+    setValueToAddr(instr.args![0], instr.args![1], original << OS.slice(-1)[0])
+  },
+  RIGHT_ASSIGN: () => {
+    const original = getValueFromAddr(instr.args![0], instr.args![1])
+    setValueToAddr(instr.args![0], instr.args![1], original >> OS.slice(-1)[0])
+  },
+  XOR_ASSIGN: () => {
+    const original = getValueFromAddr(instr.args![0], instr.args![1])
+    setValueToAddr(instr.args![0], instr.args![1], original ^ OS.slice(-1)[0])
+  },
+  AND_ASSIGN: () => {
+    const original = getValueFromAddr(instr.args![0], instr.args![1])
+    setValueToAddr(instr.args![0], instr.args![1], original & OS.slice(-1)[0])
+  },
+  OR_ASSIGN: () => {
+    const original = getValueFromAddr(instr.args![0], instr.args![1])
+    setValueToAddr(instr.args![0], instr.args![1], original | OS.slice(-1)[0])
+  },
 
   CALL: () => {
-    const arity = instr.args![0]
-    const args = []
-    for (let i = arity - 1; i >= 0; i--) {
-      args[i] = popOS()
+    // set return address
+    setValueToAddr(EBP + BaseType.addr, BaseType.addr, PC)
+    if (instr.args) {
+      OS.pop()
+      BUILTINS[instr.args[0]]()
+      M.RESET()
+    } else {
+      PC = OS.pop()!
     }
-    const closure = popOS()
-    RTS.push({
-      tag: 'CALL_FRAME',
-      addr: PC,
-      env: [...E]
-    })
-    E = [...closure.env!, args]
-    PC = closure.addr!
   },
 
   JOF: () => (PC = popOS() ? PC : instr.args![0]),
@@ -225,13 +283,9 @@ const M: { [code in OpCodes]: () => void } = {
   POP: () => popOS(),
 
   RESET: () => {
-    const topFrame = RTS.pop() as Stack
-    if (topFrame.tag == 'CALL_FRAME') {
-      PC = topFrame.addr!
-      E = topFrame.env!
-    } else {
-      PC--
-    }
+    PC = getValueFromAddr(EBP + BaseType.addr, BaseType.addr)
+    ESP = EBP
+    EBP = getValueFromAddr(EBP, BaseType.addr)
   },
 
   BREAK: () => {
@@ -254,18 +308,6 @@ const M: { [code in OpCodes]: () => void } = {
 
   RMARKER: () => {},
 
-  ENTER_SCOPE: () => {
-    RTS.push({
-      tag: 'BLOCK_FRAME',
-      env: [...E]
-    })
-    E.push([])
-  },
-
-  EXIT_SCOPE: () => {
-    E = (RTS.pop() as Stack).env!
-  },
-
   DONE: () => {}
 }
 
@@ -273,16 +315,16 @@ export function runWithProgram(p: Program): any {
   const ENTRY = p.entry
   INSTRS = p.instrs
   OS = []
+  ESP = 0
+  EBP = 0
   PC = ENTRY
-  RTS = []
 
   while (INSTRS[PC].opcode !== OpCodes.DONE) {
     instr = INSTRS[PC++]
-    // console.log('running PC: ', PC - 1, ' instr: ', instr)
+    console.debug('running PC: ', PC - 1, ' instr: ', instr)
     M[instr.opcode]()
-    // console.log('OS: ', OS)
-    // console.log('E: ', E)
-    // console.log('RTS: ', RTS, '\n')
+    console.debug('OS: ', OS)
+    console.debug('stack: ', debugGetStack(ESP))
   }
 
   // main functions guarantee a return.

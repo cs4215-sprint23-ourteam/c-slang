@@ -34,8 +34,9 @@ async function runVM(program: CTree, context: Context, options: IOptions): Promi
       context,
       value: runWithProgram(compileProgram(program))
     })
-  } catch (error) {
+  } catch (err) {
     // implement better error checking in the future
+    console.error(err)
     return resolvedErrorPromise
   }
 }

@@ -3,16 +3,16 @@ type EnsureCorrectEnum<T extends { [K in Exclude<keyof T, number>]: K }> = true
 // use string values for easier debugging, may change to numbers for looking cool
 export enum OpCodes {
   NOP = 'NOP',
-  LDC = 'LDC', // integer
+  LDC = 'LDC', // load value from arg into OS, [value, size]
   ADD = 'ADD',
   SUB = 'SUB',
   MUL = 'MUL',
   DIV = 'DIV',
   MOD = 'MOD',
-  INC = 'INC',
-  DEC = 'DEC',
-  DEREF = 'DEREF',
-  REF = 'REF',
+  INC = 'INC', // TODO: solve this
+  DEC = 'DEC', // TODO: solve this
+  DEREF = 'DEREF', // TODO: solve this
+  REF = 'REF', // TODO: solve this
   EQ = 'EQ',
   NE = 'NE',
   GEQ = 'GEQ',
@@ -26,10 +26,19 @@ export enum OpCodes {
   XOR = 'XOR',
   AND = 'AND', // logical and
   OR = 'OR', // logical or
-  LDF = 'LDF', // function
-  LD = 'LD', // name
+  LDF = 'LDF', // load function address into OS, value from args, [value]
+  LD = 'LD', // load value into OS, value from stack, [addr, size]
   GOTO = 'GOTO',
-  ASSIGN = 'ASSIGN',
+  ASSIGN = 'ASSIGN', // assign to stack, value from OS top, [addr, size]
+  // should always push or exs before assign, otherwise ESP will not be correctly set, causing error when moving EBP
+  PUSH = 'PUSH', // push to stack, ~=EXS+ASSIGN, value popped from OS, [size]
+  EXS = 'EXS', // extend stack, just increase ESP, [size]
+  LDB = 'LDB', // load EBP (ADDR) into OS
+  ASGB = 'ASGB', // assign popped OS to EBP
+  LDS = 'LDS', // load ESP into OS
+  LDPC = 'LDPC', // load PC (ADDR) into OS
+
+  // TODO add size
   ADD_ASSIGN = 'ADD_ASSIGN',
   SUB_ASSIGN = 'SUB_ASSIGN',
   MUL_ASSIGN = 'MUL_ASSIGN',
@@ -40,19 +49,27 @@ export enum OpCodes {
   XOR_ASSIGN = 'XOR_ASSIGN',
   AND_ASSIGN = 'AND_ASSIGN',
   OR_ASSIGN = 'OR_ASSIGN',
-  CALL = 'CALL',
-  JOF = 'JOF',
-  POP = 'POP',
-  RESET = 'RESET',
-  BREAK = 'BREAK',
+
+  CALL = 'CALL', // call function, addr from popped OS, or builtin code from arg, [builtinID]
+  JOF = 'JOF', // jump on false, value from OS top, [addr]
+  POP = 'POP', // POP OS
+  RESET = 'RESET', // indicates the end of function calls
+  BREAK = 'BREAK', // TODO can change to jump and remove all markers
   BMARKER = 'BMARKER',
   CONT = 'CONT',
   CMARKER = 'CMARKER',
   RET = 'RET',
   RMARKER = 'RMARKER', // marker for return
-  ENTER_SCOPE = 'ENTER_SCOPE',
-  EXIT_SCOPE = 'EXIT_SCOPE',
+  // ENTER_SCOPE = 'ENTER_SCOPE',
+  // EXIT_SCOPE = 'EXIT_SCOPE',
   DONE = 'DONE'
 }
 
 type _ = EnsureCorrectEnum<typeof OpCodes>
+
+export enum builtins {
+  malloc = 0,
+  free = 1,
+  DEBUGDISPLAY = 2,
+  printf = 3
+}

@@ -5,6 +5,7 @@ export enum BaseType {
   char = 1,
   short = 2,
   int = 4,
+  addr = 8,
   long = 8
 }
 

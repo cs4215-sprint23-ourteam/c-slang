@@ -1,8 +1,8 @@
-import { BaseType } from "./types"
+import { BaseType } from './types'
 
 class MemoryManager {
   totalSize: number
-  nodes: { start: number, size: number, allocated: boolean }[]
+  nodes: { start: number; size: number; allocated: boolean }[]
 
   constructor(size: number) {
     this.make(size)
@@ -29,7 +29,7 @@ class MemoryManager {
   }
 
   free(addr: number) {
-    const idx = this.nodes.findIndex(node => node.start = addr)
+    const idx = this.nodes.findIndex(node => (node.start = addr))
     if (idx === -1) {
       return undefined
     }
@@ -50,14 +50,11 @@ export const HEAP_MANAGER = new MemoryManager(ADDRESS_SPACE / 2)
 export function getValueFromAddr(addr: number, length: BaseType) {
   if (length === BaseType.char) {
     return MEMORY.getInt8(addr)
-  }
-  else if (length === BaseType.short) {
+  } else if (length === BaseType.short) {
     return MEMORY.getInt16(addr)
-  }
-  else if (length === BaseType.int) {
+  } else if (length === BaseType.int) {
     return MEMORY.getInt32(addr)
-  }
-  else if (length === BaseType.long) {
+  } else if (length === BaseType.long) {
     return Number(MEMORY.getBigInt64(addr))
   } else {
     throw new Error('invalid type')
@@ -67,14 +64,11 @@ export function getValueFromAddr(addr: number, length: BaseType) {
 export function setValueToAddr(addr: number, length: BaseType, value: number) {
   if (length === BaseType.char) {
     return MEMORY.setInt8(addr, value)
-  }
-  else if (length === BaseType.short) {
+  } else if (length === BaseType.short) {
     return MEMORY.setInt16(addr, value)
-  }
-  else if (length === BaseType.int) {
+  } else if (length === BaseType.int) {
     return MEMORY.setInt32(addr, value)
-  }
-  else if (length === BaseType.long) {
+  } else if (length === BaseType.long) {
     return MEMORY.setBigInt64(addr, BigInt(value))
   } else {
     throw new Error('invalid type')
@@ -103,4 +97,12 @@ export function freeInHeap(addr: number) {
     throw new Error('invalid address')
   }
   return 0
+}
+
+export function debugGetStack(ESP: number) {
+  const s = []
+  for (let i = 0; i < ESP; i += 4) {
+    s.push(getValueFromAddr(i, 4))
+  }
+  return s
 }
