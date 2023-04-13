@@ -35,13 +35,17 @@ const M: { [code in OpCodes]: () => void } = {
   ADD: () => {
     const op2 = popOS() as number
     const op1 = popOS() as number
-    OS.push(op1 + op2)
+    const size = instr.args![0]
+    const scaleLeft = instr.args![1]
+    OS.push(op1 * (1 + (size - 1) * scaleLeft) + op2 * (1 + (size - 1) * +!scaleLeft))
   },
 
   SUB: () => {
     const op2 = popOS() as number
     const op1 = popOS() as number
-    OS.push(op1 - op2)
+    const size = instr.args![0]
+    const scaleLeft = instr.args![1]
+    OS.push(op1 * (1 + (size - 1) * scaleLeft) - op2 * (1 + (size - 1) * +!scaleLeft))
   },
 
   MUL: () => {
@@ -64,15 +68,15 @@ const M: { [code in OpCodes]: () => void } = {
 
   INC: () => {
     // push two values, one to use and one to assign
-    const op = (popOS() as number) + 1
-    OS.push((op + instr.args![0]) as number)
+    const op = (popOS() as number) + instr.args![1]
+    OS.push((op + instr.args![0] * instr.args![1]) as number)
     OS.push(op)
   },
 
   DEC: () => {
     // push two values, one to use and one to assign
-    const op = (popOS() as number) - 1
-    OS.push((op - instr.args![0]) as number)
+    const op = (popOS() as number) - instr.args![1]
+    OS.push((op - instr.args![0] * instr.args![1]) as number)
     OS.push(op)
   },
 
@@ -180,9 +184,9 @@ const M: { [code in OpCodes]: () => void } = {
 
   ASSIGN: () => (E[instr.args![0]][instr.args![1]] = OS.slice(-1)[0]),
 
-  ADD_ASSIGN: () => (E[instr.args![0]][instr.args![1]] += OS.slice(-1)[0]),
+  ADD_ASSIGN: () => (E[instr.args![0]][instr.args![1]] += OS.slice(-1)[0] * instr.args![2]),
 
-  SUB_ASSIGN: () => (E[instr.args![0]][instr.args![1]] -= OS.slice(-1)[0]),
+  SUB_ASSIGN: () => (E[instr.args![0]][instr.args![1]] -= OS.slice(-1)[0] * instr.args![2]),
 
   MUL_ASSIGN: () => (E[instr.args![0]][instr.args![1]] *= OS.slice(-1)[0]),
 
