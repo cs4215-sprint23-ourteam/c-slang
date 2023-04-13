@@ -26,6 +26,8 @@ export type Type = {
   child: Type | SignedType
   const: boolean
   depth: number
+  // unnecessary - see the comment on getSizeFromType below
+  // the child property already contains this information
   size?: number
 }
 
@@ -44,6 +46,8 @@ export const UndeclaredType: Type = {
   depth: 0
 } as const
 
+// you can also do
+// return t.depth > 1 ? 8 : (t.child as SignedType).type
 export function getSizeFromType(t: Type) {
   if ('size' in t && t.size !== undefined) {
     return t.size

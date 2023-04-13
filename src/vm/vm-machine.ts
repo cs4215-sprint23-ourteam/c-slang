@@ -48,6 +48,11 @@ const M: { [code in OpCodes]: () => void } = {
   NOP: () => {},
 
   LDC: () => {
+    // would prefer to push undefined because
+    // 1. compiler always guarantees LDC instructions are created with args
+    // 2. easier on testing - this undefined should never be loaded. if you load a -1
+    //    and do some math operations on it you might (erroneously) get right results
+    // 3. cleaner - only keep lines 58 and 59
     if (instr.args === undefined || instr.args.length === 0) OS.push(-1)
     else {
       const op = instr.args[0] as number
@@ -225,6 +230,7 @@ const M: { [code in OpCodes]: () => void } = {
     OS.push(PC)
   },
 
+  // all these assign operations are bugged
   ADD_ASSIGN: () => {
     const original = getValueFromAddr(instr.args![0], instr.args![1])
     setValueToAddr(instr.args![0], instr.args![1], original + OS.slice(-1)[0])

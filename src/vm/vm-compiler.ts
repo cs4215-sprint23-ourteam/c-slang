@@ -567,6 +567,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       TypeStack.push(ltype)
       Instructions[wc++] = {
         opcode: opcode,
+        // you can probably use the size here
         // args: [loc, size]
         args: [loc, getSizeFromType(ltype)]
       }
