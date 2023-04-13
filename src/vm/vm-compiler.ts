@@ -5,8 +5,10 @@ import {
   compareTypes,
   compareTypesInCast,
   FunctionType,
+  getSizeFromType,
   makeFunctionType,
   makeSigned,
+  makeSized,
   SignedType,
   Type,
   typeToString,
@@ -99,19 +101,28 @@ type CEnv = {
 }
 
 let wc = 0
-let Instructions: Instruction[] = []
+const Instructions: Instruction[] = []
 const BuiltInFunctionNames: CFrame = [
   {
     name: 'malloc',
-    type: makeFunctionType(BaseType.addr as unknown as Type, []),
-    addr: -1
+    type: {
+      child: { type: BaseType.void, signed: false },
+      const: false,
+      depth: 0,
+      params: [
+        {
+          child: { type: BaseType.int, signed: false },
+          const: false,
+          depth: 0
+        }
+      ]
+    } as Type,
+    addr: 1
   }
 ]
-const ConstantNames: CFrame = []
 const GlobalCompileEnvironment: CEnv = {
-  frames: [BuiltInFunctionNames, ConstantNames, []],
-  // TODO correct ESP
-  ESP: 0,
+  frames: [BuiltInFunctionNames, []],
+  ESP: BuiltInFunctionNames.length * BaseType.addr,
   EBP: 0
 }
 // type-checking is excruciating to deal with, especially in exprs with many layers of nested
@@ -120,14 +131,10 @@ const GlobalCompileEnvironment: CEnv = {
 let returnType: Type
 const TypeStack: Type[] = []
 
-function initGlobalVar() {
-  wc = 0
-  Instructions = []
-}
-
 // for dealing with compile-time environments
 const helpers = {
   extend: (frame: CFrame, env: CEnv) => {
+    console.debug('debug extend frame', env)
     return {
       frames: [...env.frames, frame],
       ESP: env.ESP,
@@ -135,6 +142,7 @@ const helpers = {
     }
   },
   newCallFrame: (env: CEnv) => {
+    console.debug('debug new call frame', env)
     return {
       frames: [...env.frames, []],
       ESP: env.ESP,
@@ -148,7 +156,7 @@ const helpers = {
     }
     frame.push({ name: name, addr: env.ESP, type: type })
     env.ESP += size
-    console.debug('debug', env)
+    console.debug('debug declared', name, type, env)
     return 0
   },
   findPos(env: CEnv, s: string) {
@@ -190,11 +198,18 @@ function createName(
   baseType: Type,
   dec: CTree,
   env: CEnv,
-  { funcPtr = true, extendStack = true }: { funcPtr?: boolean; extendStack?: boolean } = {}
+  {
+    funcPtr = true,
+    extendStack = true,
+    isFunction = false
+  }: { funcPtr?: boolean; extendStack?: boolean; isFunction?: boolean } = {}
 ): string {
+  console.debug('debug size', baseType)
   const arr = extractName(baseType, dec)
   const name = arr[0] as string
   let type = arr[1] as Type
+  console.debug('debug size', name, type)
+
   if (arr[2] !== undefined && funcPtr) {
     // naming becomes atrocious at 6am
     let paramsList = [] as Type[]
@@ -207,8 +222,16 @@ function createName(
     // dereference the pointer
     type = makeFunctionType(type.child as Type, paramsList)
   }
-  // TODO size based on type
-  const size = BaseType.addr
+
+  let size = getSizeFromType(type)
+  console.debug('debug size', name, size, type, isFunction)
+  console.debug('debug size: undeclared', UndeclaredType)
+  if (isFunction) {
+    size = BaseType.addr
+    type = makeSized(type, size)
+  }
+  console.debug('debug size: undeclared', UndeclaredType)
+  console.debug('debug size', name, size, type, isFunction)
   helpers.declare(name, size, type, env)
   if (extendStack) {
     Instructions[wc++] = {
@@ -260,8 +283,10 @@ function extractName(baseType: Type, dec: CTree): [string, Type, CTree | undefin
 //                          OR type_specifier, declaration_specifiers
 function createTypeFromList(decSpe: CTree): Type {
   const type = UndeclaredType
+  console.debug('debug size: undeclared', type)
   let node = decSpe
   while (true) {
+    console.debug('debug size', type)
     const typeNode = node.children![0] as CTree
     if (typeNode.title === 'type_qualifier') {
       type.const = true
@@ -274,6 +299,7 @@ function createTypeFromList(decSpe: CTree): Type {
     if (node.children!.length > 1) node = node.children![1] as CTree
     else break
   }
+  console.debug('debug size', type)
   return type
 }
 
@@ -506,7 +532,8 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       TypeStack.push(ltype)
       Instructions[wc++] = {
         opcode: opcode,
-        args: [loc, size]
+        // args: [loc, size]
+        args: [loc, getSizeFromType(ltype)]
       }
     }
   },
@@ -594,8 +621,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
           if (warning !== Warnings.SUCCESS) console.log('warning: initialization' + warning)
           TypeStack.push(ltype)
         }
-        // TODO size based on type
-        Instructions[wc++] = { opcode: opcode, args: [loc, BaseType.int] }
+        Instructions[wc++] = { opcode: opcode, args: [loc, getSizeFromType(lType)] }
       } else {
         Instructions[wc++] = {
           opcode: OpCodes.LDC,
@@ -663,7 +689,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     const decSpe = node.children![0] as CTree
     const type = createTypeFromList(decSpe)
     const dec = node.children![1] as CTree
-    const funcName = createName(type, dec, env, { funcPtr: false })
+    const funcName = createName(type, dec, env, { funcPtr: false, isFunction: true })
     returnType = TypeStack.pop()!
     const funcLoc = helpers.findPos(env, funcName)
 
@@ -681,6 +707,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     // EBP -> prev saved EBP, ... <- ESP
 
     const newEnv = helpers.newCallFrame(env)
+    newEnv.ESP += 2 * BaseType.addr
 
     // ignore variadic func, so ignore ... in params
     if (dirDecP.children!.length === 4) {
@@ -691,7 +718,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
         createName(
           createTypeFromList(parDec.children![0] as CTree),
           parDec.children![1] as CTree,
-          env,
+          newEnv,
           {
             extendStack: false
           }
@@ -933,8 +960,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       }
       Instructions[wc++] = {
         opcode: OpCodes.ASSIGN,
-        // TODO size based on type
-        args: [loc, BaseType.int]
+        args: [loc, getSizeFromType(lvalueObject(env, priExp).type)]
       }
       Instructions[wc++] = { opcode: OpCodes.POP }
     } else if (posExpP.children!.length >= 3 && posExpP.children!.length <= 4) {
@@ -986,7 +1012,6 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
 
   // children: expression token
   primary_expr: (node, env) => {
-    node.debugTree(3)
     const token = node.children![0] as Token
     if (token.tokenClass === 'CONSTANT') {
       let raw = token.lexeme
@@ -994,9 +1019,11 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
         raw = raw.slice(0, -1)
       }
       const value = Number(raw)
-      // TODO size based on type
-      Instructions[wc++] = { opcode: OpCodes.LDC, args: [value, BaseType.int] }
-      // insert type inference here (in the future... probably) or some super general type
+      Instructions[wc++] = { opcode: OpCodes.LDC, args: [value] }
+      // we just use the least generalised type possible. this is because we check for
+      // possible truncation during assignment but not padding, because we don't actually
+      // do any casting in the compiler (since we don't ever handle raw values, we just
+      // load them for the machine to do).
       TypeStack.push({
         child: makeSigned(BaseType.int),
         const: false,
@@ -1005,8 +1032,11 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     } else if (token.tokenClass === 'IDENTIFIER') {
       const name: string = token.lexeme
       const loc = helpers.findPos(env, name)
-      // TODO size based on type
-      Instructions[wc++] = { opcode: OpCodes.LD, args: [loc, BaseType.int] }
+      console.debug('debug size', helpers.find(env, name), env)
+      Instructions[wc++] = {
+        opcode: OpCodes.LD,
+        args: [loc, getSizeFromType(helpers.find(env, name).type)]
+      }
       TypeStack.push(helpers.find(env, name).type)
     }
   },
@@ -1101,8 +1131,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
         }
         Instructions[wc++] = {
           opcode: OpCodes.ASSIGN,
-          // TODO size based on type
-          args: [loc, BaseType.int]
+          args: [loc, getSizeFromType(lvalueObject(env, node.nodeChildren[1]).type)]
         }
         Instructions[wc++] = { opcode: OpCodes.POP }
       } else {
@@ -1134,7 +1163,29 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
 // vmInternalFunctions refers to functions not called by users (like clearing the RTS)
 // they are both empty for now but we'll add to them as development progresses
 function compileToIns(program: CTree): Program {
-  initGlobalVar()
+  // builtin functions
+  // skip calling
+  Instructions[wc++] = {
+    opcode: OpCodes.GOTO,
+    args: [BuiltInFunctionNames.length + 1]
+  }
+  Array.from(BuiltInFunctionNames.keys()).forEach(idx => {
+    Instructions[wc++] = {
+      opcode: OpCodes.CALLP,
+      args: [idx]
+    }
+  })
+  for (const func of BuiltInFunctionNames) {
+    Instructions[wc++] = {
+      opcode: OpCodes.LDF,
+      args: [func.addr]
+    }
+    Instructions[wc++] = {
+      opcode: OpCodes.PUSH,
+      args: [BaseType.addr]
+    }
+  }
+
   compile(program, GlobalCompileEnvironment)
   const MainPos = helpers.findPos(GlobalCompileEnvironment, 'main')
   if (MainPos === -1) throw new Error('no main function detected')
@@ -1151,6 +1202,9 @@ function compileToIns(program: CTree): Program {
   for (const [idx, entry] of Instructions.entries()) {
     console.debug(idx, entry)
   }
+  // GlobalCompileEnvironment.frames[1].forEach(sym => {
+  //   console.debug('debug: sym:', sym)
+  // })
   return { entry: 0, instrs: Instructions }
 }
 

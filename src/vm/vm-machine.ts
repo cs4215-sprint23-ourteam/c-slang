@@ -3,19 +3,10 @@ import { builtins, OpCodes } from './opcodes'
 import { BaseType } from './types'
 import { Instruction, Program } from './vm-compiler'
 
-// placeholder structures for instruction implementation
-// type Env = any[][]
-// type Stack = {
-//   tag: string
-//   addr?: number
-//   env?: Env
-// }
-
-// eventually this should be any[]
-let OS: any[] = []
+// values are stored in OS with highest percision (8 bytes),
+// and casted when assigned into memory
+let OS: number[] = []
 let PC: number = 0
-// let RTS: Stack[] = []
-// let E: Env = [[], []]
 let ESP = 0
 let EBP = 0
 let INSTRS: Instruction[] = []
@@ -43,7 +34,7 @@ const M: { [code in OpCodes]: () => void } = {
   NOP: () => {},
 
   LDC: () => {
-    if (instr.args === undefined || instr.args.length === 0) OS.push(undefined)
+    if (instr.args === undefined || instr.args.length === 0) OS.push(-1)
     else {
       const op = instr.args[0] as number
       OS.push(op)
@@ -269,13 +260,12 @@ const M: { [code in OpCodes]: () => void } = {
   CALL: () => {
     // set return address
     setValueToAddr(EBP + BaseType.addr, BaseType.addr, PC)
-    if (instr.args) {
-      OS.pop()
-      BUILTINS[instr.args[0]]()
-      M.RESET()
-    } else {
-      PC = OS.pop()!
-    }
+    PC = OS.pop()!
+  },
+
+  CALLP: () => {
+    BUILTINS[instr.args![0]]()
+    M.RESET()
   },
 
   JOF: () => (PC = popOS() ? PC : instr.args![0]),
@@ -321,7 +311,7 @@ export function runWithProgram(p: Program): any {
 
   while (INSTRS[PC].opcode !== OpCodes.DONE) {
     instr = INSTRS[PC++]
-    console.debug('running PC: ', PC - 1, ' instr: ', instr)
+    console.debug('\nrunning PC: ', PC - 1, ' instr: ', instr, EBP, ESP)
     M[instr.opcode]()
     console.debug('OS: ', OS)
     console.debug('stack: ', debugGetStack(ESP))

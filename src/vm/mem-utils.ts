@@ -42,6 +42,7 @@ class MemoryManager {
   }
 }
 
+// use little endian for easy casting
 const ADDRESS_SPACE = 1024 * 1024 * 64
 const MEMORY = new DataView(new ArrayBuffer(ADDRESS_SPACE))
 
@@ -51,11 +52,11 @@ export function getValueFromAddr(addr: number, length: BaseType) {
   if (length === BaseType.char) {
     return MEMORY.getInt8(addr)
   } else if (length === BaseType.short) {
-    return MEMORY.getInt16(addr)
+    return MEMORY.getInt16(addr, true)
   } else if (length === BaseType.int) {
-    return MEMORY.getInt32(addr)
+    return MEMORY.getInt32(addr, true)
   } else if (length === BaseType.long) {
-    return Number(MEMORY.getBigInt64(addr))
+    return Number(MEMORY.getBigInt64(addr, true))
   } else {
     throw new Error('invalid type')
   }
@@ -65,11 +66,11 @@ export function setValueToAddr(addr: number, length: BaseType, value: number) {
   if (length === BaseType.char) {
     return MEMORY.setInt8(addr, value)
   } else if (length === BaseType.short) {
-    return MEMORY.setInt16(addr, value)
+    return MEMORY.setInt16(addr, value, true)
   } else if (length === BaseType.int) {
-    return MEMORY.setInt32(addr, value)
+    return MEMORY.setInt32(addr, value, true)
   } else if (length === BaseType.long) {
-    return MEMORY.setBigInt64(addr, BigInt(value))
+    return MEMORY.setBigInt64(addr, BigInt(value), true)
   } else {
     throw new Error('invalid type')
   }

@@ -26,6 +26,7 @@ export type Type = {
   child: Type | SignedType
   const: boolean
   depth: number
+  size?: number
 }
 
 // we restrict functions to have depth 0
@@ -38,9 +39,20 @@ export const UndeclaredType: Type = {
   child: {
     type: BaseType.void,
     signed: false
-  },
+  } as const,
   const: false,
   depth: 0
+} as const
+
+export function getSizeFromType(t: Type) {
+  if ('size' in t && t.size !== undefined) {
+    return t.size
+  }
+  let c = t.child
+  while (!('signed' in c)) {
+    c = c.child
+  }
+  return c.type
 }
 
 export enum Warnings {
@@ -155,6 +167,15 @@ export function compareTypesInCast(left: Type, right: Type): string {
     : Warnings.SUCCESS
 }
 
+export function makeSized(type: Type, size: number): Type {
+  return {
+    child: type.child,
+    const: type.const,
+    depth: type.depth,
+    size: size
+  }
+}
+
 export function makeSigned(type: BaseType): SignedType {
   return {
     type: type,
@@ -167,7 +188,8 @@ export function makeFunctionType(type: Type, params: Type[]): FunctionType {
     child: type.child,
     const: type.const,
     depth: type.depth,
-    params: params
+    params: params,
+    size: type.size
   }
 }
 

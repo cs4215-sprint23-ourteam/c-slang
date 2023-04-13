@@ -3,7 +3,7 @@ type EnsureCorrectEnum<T extends { [K in Exclude<keyof T, number>]: K }> = true
 // use string values for easier debugging, may change to numbers for looking cool
 export enum OpCodes {
   NOP = 'NOP',
-  LDC = 'LDC', // load value from arg into OS, [value, size]
+  LDC = 'LDC', // load value from arg into OS, [value]
   ADD = 'ADD',
   SUB = 'SUB',
   MUL = 'MUL',
@@ -50,7 +50,8 @@ export enum OpCodes {
   AND_ASSIGN = 'AND_ASSIGN',
   OR_ASSIGN = 'OR_ASSIGN',
 
-  CALL = 'CALL', // call function, addr from popped OS, or builtin code from arg, [builtinID]
+  CALL = 'CALL', // call function, addr from popped OS
+  CALLP = 'CALLP', // builtin functions, id from arg. [builtinID]
   JOF = 'JOF', // jump on false, value from OS top, [addr]
   POP = 'POP', // POP OS
   RESET = 'RESET', // indicates the end of function calls
