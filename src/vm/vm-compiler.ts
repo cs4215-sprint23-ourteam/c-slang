@@ -656,7 +656,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
           if (warning !== Warnings.SUCCESS) console.log('warning: initialization' + warning)
           TypeStack.push(ltype)
         }
-        Instructions[wc++] = { opcode: opcode, args: [loc, getSizeFromType(lType)] }
+        Instructions[wc++] = { opcode: opcode, args: [loc, getSizeFromType(ltype)] }
       } else {
         Instructions[wc++] = {
           opcode: OpCodes.LDC,
