@@ -3,12 +3,15 @@ import { OpCodes } from './opcodes'
 import {
   BaseType,
   compareTypes,
+  compareTypesInCast,
   FunctionType,
   makeFunctionType,
   makeSigned,
   SignedType,
   Type,
-  UndeclaredType
+  typeToString,
+  UndeclaredType,
+  Warnings
 } from './types'
 
 const VALID_ASSIGNMENT_OPERATORS = new Map([
@@ -149,7 +152,6 @@ function createName(baseType: Type, dec: CTree, env: CEnv, funcPtr: boolean = tr
   const arr = extractName(baseType, dec)
   const name = arr[0] as string
   let type = arr[1] as Type
-
   if (arr[2] !== undefined && funcPtr) {
     // naming becomes atrocious at 6am
     let paramsList = [] as Type[]
@@ -169,7 +171,7 @@ function createName(baseType: Type, dec: CTree, env: CEnv, funcPtr: boolean = tr
 
 // recursively delves into a declarator node to extract the type and name
 // of the object. if at any point we find some argument_list we know it's
-// a function pointer.
+// a function pointer or function.
 function extractName(baseType: Type, dec: CTree): [string, Type, CTree | undefined | null] {
   let type = baseType
   let node = dec
@@ -245,9 +247,9 @@ function updateTypeWithPointer(type: Type, pointer: CTree): Type {
   let newType = type
   while (true) {
     newType = {
-      child: type,
+      child: newType,
       const: false,
-      depth: type.depth + 1
+      depth: newType.depth + 1
     }
     if (pointer.children!.length === 1) {
       break
@@ -334,14 +336,47 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     const list = flatten(node)
     compile(list[0] as CTree, env)
     for (let i = 1; i < list.length; i += 2) {
-      const type = TypeStack.pop()!
-      if (type.depth > 0) throw new Error('invalid operands to binary + or -')
+      let ltype = TypeStack.pop()!
       const token = list[i] as Token
       const opcode = VALID_BINARY_OPERATORS.get(token.lexeme) as OpCodes
       compile(list[i + 1] as CTree, env)
-      if (TypeStack.pop()!.depth > 0) throw new Error('invalid operands to binary + or -')
-      Instructions[wc++] = { opcode: opcode }
-      TypeStack.push(type)
+      const rtype = TypeStack.pop()!
+      let size = 1
+      let scaleLeft = 0
+      // determine if pointer arithmetic is done here
+      if (ltype.depth > 0) {
+        if (rtype.depth > 0) {
+          throw new Error(
+            'invalid operands to binary ' +
+              token.lexeme +
+              ' (have ' +
+              typeToString(ltype) +
+              ' and ' +
+              typeToString(rtype) +
+              ')'
+          )
+        }
+        size = ltype.depth === 1 ? ((ltype.child as Type).child as SignedType).type : 8
+      } else if (rtype.depth > 0) {
+        if (opcode === OpCodes.SUB) {
+          throw new Error(
+            'invalid operands to binary -' +
+              ' (have ' +
+              typeToString(ltype) +
+              ' and ' +
+              typeToString(rtype) +
+              ')'
+          )
+        }
+        ltype = rtype
+        scaleLeft = 1
+        size = ltype.depth === 1 ? ((ltype.child as Type).child as SignedType).type : 8
+      }
+      Instructions[wc++] = {
+        opcode: opcode,
+        args: [size, scaleLeft]
+      }
+      TypeStack.push(ltype)
     }
   },
 
@@ -351,12 +386,20 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     const list = flatten(node)
     compile(list[0] as CTree, env)
     for (let i = 1; i < list.length; i += 2) {
-      const type = TypeStack.pop()!
-      if (type.depth > 0) throw new Error('invalid operands to binary &')
+      const ltype = TypeStack.pop()!
       compile(list[i + 1] as CTree, env)
-      if (TypeStack.pop()!.depth > 0) throw new Error('invalid operands to binary &')
+      const rtype = TypeStack.pop()!
+      if (ltype.depth > 0 || rtype.depth > 0)
+        throw new Error(
+          'invalid operands to binary &' +
+            ' (have ' +
+            typeToString(ltype) +
+            ' and ' +
+            typeToString(rtype) +
+            ')'
+        )
       Instructions[wc++] = { opcode: OpCodes.BAND }
-      TypeStack.push(type)
+      TypeStack.push(ltype)
     }
   },
 
@@ -368,19 +411,47 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     }
     if (node.children!.length === 3) {
       const loc = lvalueLocation(env, node.children![0] as CTree)
+      const ltype = env[loc[0]][loc[1]].type
       const assOp = node.children![1] as CTree
       const token = assOp.children![0] as Token
       const opcode = VALID_ASSIGNMENT_OPERATORS.get(token.lexeme) as OpCodes
       compile(node.children![2] as CTree, env)
+      const rtype = TypeStack.pop() as Type
+      let size = 1
       if (opcode == OpCodes.ASSIGN) {
-        const lType = env[loc[0]][loc[1]].type
-        const rType = TypeStack.pop() as Type
-        compareTypes(lType, rType)
-        TypeStack.push(lType)
+        const warning = compareTypes(ltype, rtype)
+        if (warning !== Warnings.SUCCESS) console.log('warning: assignment' + warning)
+      } else if (rtype.depth > 0) {
+        throw new Error(
+          'invalid operands to binary ' +
+            token.lexeme.slice(0, -1) +
+            ' (have ' +
+            typeToString(ltype) +
+            ' and ' +
+            typeToString(rtype) +
+            ')'
+        )
+      } else if (ltype.depth > 0) {
+        // check for pointer arithmetic
+        if (opcode != OpCodes.ADD_ASSIGN && opcode != OpCodes.SUB_ASSIGN) {
+          // uh oh...
+          throw new Error(
+            'invalid operands to binary ' +
+              token.lexeme.slice(0, -1) +
+              ' (have ' +
+              typeToString(ltype) +
+              ' and ' +
+              typeToString(rtype) +
+              ')'
+          )
+        } else {
+          size = ltype.depth === 1 ? ((ltype.child as Type).child as SignedType).type : 8
+        }
       }
+      TypeStack.push(ltype)
       Instructions[wc++] = {
         opcode: opcode,
-        args: loc
+        args: [...loc, size]
       }
     }
   },
@@ -410,7 +481,8 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       compile(node.children![3] as CTree, env)
       const rtype = TypeStack.pop()!
       const ltype = createTypeFromTypeName(node.children![1] as CTree)
-      compareTypes(ltype, rtype)
+      const warning = compareTypesInCast(ltype, rtype)
+      if (warning !== Warnings.SUCCESS) console.log('warning: ' + warning)
       TypeStack.push(ltype)
     }
   },
@@ -460,15 +532,16 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       const initDec = list[i] as CTree
       const name = createName(type, initDec.children![0] as CTree, env)
       const loc = helpers.find(env, name)
-      const lType = TypeStack.pop()!
+      const ltype = TypeStack.pop()!
       if (initDec.children!.length > 1) {
         const token = initDec.children![1] as Token
         const opcode = VALID_ASSIGNMENT_OPERATORS.get(token.lexeme) as OpCodes
         compile(initDec.children![2] as CTree, env)
         if (opcode == OpCodes.ASSIGN) {
-          const rType = TypeStack.pop()!
-          compareTypes(lType, rType)
-          TypeStack.push(lType)
+          const rtype = TypeStack.pop()!
+          const warning = compareTypes(ltype, rtype)
+          if (warning !== Warnings.SUCCESS) console.log('warning: initialization' + warning)
+          TypeStack.push(ltype)
         }
         Instructions[wc++] = { opcode: opcode, args: loc }
       } else {
@@ -542,8 +615,9 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     const funcLoc = helpers.find(env, funcName)
     if (funcName == 'main') MainPos = funcLoc
 
+    // probably refactor this
     // children: identifier token, direct_declarator_p
-    const dirDec = dec.children![0] as CTree
+    const dirDec = dec.children![dec.children!.length - 1] as CTree
     // children: empty
     //        OR '(', parameter_type_list, ')', direct_declarator_p
     const dirDecP = dirDec.children![1] as CTree
@@ -596,12 +670,20 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     const list = flatten(node)
     compile(list[0] as CTree, env)
     for (let i = 1; i < list.length; i += 2) {
-      const type = TypeStack.pop()!
-      if (type.depth > 0) throw new Error('invalid operands to binary |')
+      const ltype = TypeStack.pop()!
       compile(list[i + 1] as CTree, env)
-      if (TypeStack.pop()!.depth > 0) throw new Error('invalid operands to binary |')
+      const rtype = TypeStack.pop()!
+      if (ltype.depth > 0 || rtype.depth > 0)
+        throw new Error(
+          'invalid operands to binary |' +
+            ' (have ' +
+            typeToString(ltype) +
+            ' and ' +
+            typeToString(rtype) +
+            ')'
+        )
       Instructions[wc++] = { opcode: OpCodes.BOR }
-      TypeStack.push(type)
+      TypeStack.push(ltype)
     }
   },
 
@@ -706,7 +788,8 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       ) {
         console.log("warning: 'return' with a value, in function returning void")
       } else {
-        compareTypes(returnType, type)
+        const warning = compareTypes(returnType, type, true)
+        console.log('warning: ' + warning)
       }
     } else {
       Instructions[wc++] = {
@@ -747,14 +830,23 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     const list = flatten(node)
     compile(list[0] as CTree, env)
     for (let i = 1; i < list.length; i += 2) {
-      const type = TypeStack.pop()!
-      if (type.depth > 0) throw new Error('invalid operands to binary * or /')
+      const ltype = TypeStack.pop()!
       const token = list[i] as Token
       const opcode = VALID_BINARY_OPERATORS.get(token.lexeme) as OpCodes
       compile(list[i + 1] as CTree, env)
-      if (TypeStack.pop()!.depth > 0) throw new Error('invalid operands to binary * or /')
+      const rtype = TypeStack.pop()!
+      if (ltype.depth > 0 || rtype.depth > 0)
+        throw new Error(
+          'invalid operands to binary ' +
+            token.lexeme +
+            ' (have ' +
+            typeToString(ltype) +
+            ' and ' +
+            typeToString(rtype) +
+            ')'
+        )
       Instructions[wc++] = { opcode: opcode }
-      TypeStack.push(type)
+      TypeStack.push(ltype)
     }
   },
 
@@ -774,9 +866,17 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       const loc = lvalueLocation(env, priExp)
       const token = posExpP.children![0] as Token
       const opcode = VALID_UNARY_OPERATORS.get(token.lexeme) as OpCodes
+      const type = TypeStack.pop()!
+      const size =
+        type.depth === 0
+          ? 1
+          : type.depth === 1
+          ? ((type.child as Type).child as SignedType).type
+          : 8
+      TypeStack.push(type)
       Instructions[wc++] = {
         opcode: opcode,
-        args: [-1]
+        args: [-1, size]
       }
       Instructions[wc++] = {
         opcode: OpCodes.ASSIGN,
@@ -823,7 +923,8 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       if (params.length < arity) throw new Error('too many arguments to function ' + name)
 
       for (let i = params.length - 1; i >= 0; i--) {
-        compareTypes(params[i], TypeStack.pop()!)
+        const warning = compareTypes(params[i], TypeStack.pop()!)
+        if (warning !== Warnings.SUCCESS) console.log('warning: assignment' + warning)
       }
 
       TypeStack.push({
@@ -849,13 +950,10 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       }
       const value = Number(raw)
       Instructions[wc++] = { opcode: OpCodes.LDC, args: [value] }
-      // we just use the least generalised type possible. this is because we check for
-      // possible truncation during assignment but not padding, because we don't actually
-      // do any casting in the compiler (since we don't ever handle raw values, we just
-      // load them for the machine to do).
+      // insert type inference here (in the future... probably) or some super general type
       TypeStack.push({
-        child: makeSigned(BaseType.char),
-        const: true,
+        child: makeSigned(BaseType.int),
+        const: false,
         depth: 0
       })
     } else if (token.tokenClass === 'IDENTIFIER') {
@@ -945,11 +1043,19 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       const loc = lvalueLocation(env, node.children![1] as CTree)
       if ('lexeme' in node.children![0]) {
         compile(node.children![1] as CTree, env)
+        const type = TypeStack.pop()!
+        const size =
+          type.depth === 0
+            ? 1
+            : type.depth === 1
+            ? ((type.child as Type).child as SignedType).type
+            : 8
+        TypeStack.push(type)
         const token = node.children![0] as Token
         const opcode = VALID_UNARY_OPERATORS.get(token.lexeme) as OpCodes
         Instructions[wc++] = {
           opcode: opcode,
-          args: [0]
+          args: [0, size]
         }
         Instructions[wc++] = {
           opcode: OpCodes.ASSIGN,
@@ -962,7 +1068,8 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
         const opcode = VALID_UNARY_OPERATORS.get(token.lexeme) as OpCodes
         const type = TypeStack.pop()! as Type
         if (opcode === OpCodes.DEREF) {
-          if (type.depth === 0) throw new Error('invalid type argument of unary *')
+          if (type.depth === 0)
+            throw new Error('invalid type argument of unary * (have ' + typeToString(type) + ')')
           TypeStack.push(type.child as Type)
         } else if (opcode === OpCodes.REF) {
           TypeStack.push({

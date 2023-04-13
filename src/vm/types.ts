@@ -8,6 +8,14 @@ export enum BaseType {
   long = 8
 }
 
+const BaseTypeStrings = new Map([
+  [BaseType.void, 'void'],
+  [BaseType.char, 'char'],
+  [BaseType.short, 'short'],
+  [BaseType.int, 'int'],
+  [BaseType.long, 'long']
+])
+
 export type SignedType = {
   type: BaseType
   signed: boolean
@@ -34,10 +42,18 @@ export const UndeclaredType: Type = {
   depth: 0
 }
 
-export function compareTypes(left: Type, right: Type): void {
+export enum Warnings {
+  SUCCESS = '',
+  INC_PTR = ' from incompatible pointer type ',
+  NO_CONST = " discards 'const' qualifier from pointer target type",
+  INT_TO_PTR = ' makes integer from pointer without a cast',
+  PTR_TO_INT = ' makes pointer from integer without a cast'
+}
+
+export function compareTypes(left: Type, right: Type, isReturn: boolean = false): string {
   // this indicates function pointer
   if ('params' in left && 'params' in right) {
-    compareTypes(
+    let warning = compareTypes(
       {
         child: left.child,
         const: left.const,
@@ -49,38 +65,93 @@ export function compareTypes(left: Type, right: Type): void {
         depth: right.depth
       }
     )
+    if (warning !== Warnings.SUCCESS)
+      return warningToString(Warnings.INC_PTR, left, right, isReturn)
     const l = left as FunctionType
     const r = right as FunctionType
     for (let i = 0; i < l.params.length; i++) {
-      compareTypes(l.params[i], r.params[i])
+      warning = compareTypes(l.params[i], r.params[i])
+      if (warning !== Warnings.SUCCESS)
+        return warningToString(Warnings.INC_PTR, left, right, isReturn)
     }
-    return
-  } else if ('params' in left !== 'params' in right) {
-    console.log('warning: initialization from incompatible pointer type')
-    return
+    return Warnings.SUCCESS
+  } else if ('params' in left) {
+    return warningToString(Warnings.PTR_TO_INT, left, right, isReturn)
+  } else if ('params' in right) {
+    return warningToString(Warnings.INT_TO_PTR, left, right, isReturn)
   }
-
   if (left.depth === right.depth) {
-    if (left.depth === 0) return
-    while (left.depth > 0) {
-      if (left.const && !right.const) {
-        console.log("warning: initialization discards 'const' qualifier from pointer target type")
-        return
-      }
-      left = left.child as Type
-      right = right.child as Type
+    if (left.depth === 0) return Warnings.SUCCESS
+    let warning = Warnings.SUCCESS
+    let l = left
+    let r = right
+    let i = 0
+    // outer two 'layers' of const gives a no_const warning
+    while (l.depth > 0 && i++ < 2) {
+      if (!l.const && r.const) warning = Warnings.NO_CONST
+      l = l.child as Type
+      r = r.child as Type
     }
-    if (left.const && !right.const) {
-      console.log("warning: initialization discards 'const' qualifier from pointer target type")
-      return
+    while (l.depth > 0) {
+      if (!l.const && r.const) return warningToString(Warnings.INC_PTR, left, right, isReturn)
+      l = l.child as Type
+      r = r.child as Type
     }
-    if ((left.child as SignedType).type !== (right.child as SignedType).type)
-      console.log('warning: initialization from incompatible pointer type')
-  } else if (left.depth < right.depth) {
-    console.log('warning: initialization makes integer a pointer without cast')
+    if ((l.child as SignedType).type !== (r.child as SignedType).type)
+      return warningToString(Warnings.INC_PTR, left, right, isReturn)
+    else return warningToString(warning, left, right, isReturn)
+  } else if (left.depth === 0) {
+    return warningToString(Warnings.PTR_TO_INT, left, right, isReturn)
   } else {
-    console.log('warning: initialization from incompatible pointer type')
+    return right.depth !== 0
+      ? warningToString(Warnings.INC_PTR, left, right, isReturn)
+      : Warnings.SUCCESS
   }
+}
+
+function warningToString(
+  warning: Warnings,
+  left: Type,
+  right: Type,
+  isReturn: boolean = false
+): string {
+  switch (warning) {
+    case Warnings.INC_PTR:
+      return isReturn
+        ? 'returning ' +
+            typeToString(right) +
+            ' from a function with incompatible return type ' +
+            typeToString(left)
+        : ' of ' + typeToString(left) + Warnings.INC_PTR + typeToString(right)
+    case Warnings.NO_CONST:
+      return isReturn
+        ? "return discards 'const' qualifier from pointer target type"
+        : Warnings.NO_CONST
+    case Warnings.PTR_TO_INT:
+    case Warnings.INT_TO_PTR:
+      return isReturn
+        ? 'returning ' +
+            typeToString(right) +
+            ' from a function with return type ' +
+            typeToString(left) +
+            warning
+        : ' of ' + typeToString(left) + ' from ' + typeToString(right) + warning
+    default:
+      return ''
+  }
+}
+
+// separate function because comparison process is much shorter
+export function compareTypesInCast(left: Type, right: Type): string {
+  return left.depth === right.depth
+    ? Warnings.SUCCESS
+    : left.depth > right.depth &&
+      right.depth !== 0 &&
+      (right.child as SignedType).type !== BaseType.long
+    ? 'cast to pointer from integer of different size'
+    : left.depth !== 0 && (left.child as SignedType).type !== BaseType.long
+    ? 'cast from pointer to integer of different size'
+    : Warnings.SUCCESS
 }
 
 export function makeSigned(type: BaseType): SignedType {
@@ -97,4 +168,17 @@ export function makeFunctionType(type: Type, params: Type[]): FunctionType {
     depth: type.depth,
     params: params
   }
+}
+
+export function typeToString(type: Type): string {
+  if (type.depth === 0) {
+    // function pointer
+    if ('params' in type) {
+    }
+    return (
+      (type.const ? "'const " : "'") + BaseTypeStrings.get((type.child as SignedType).type) + "'"
+    )
+  }
+  const str = typeToString(type.child as Type).slice(0, -1)
+  return str + (str.slice(-1) == '*' ? '' : ' ') + '*' + (type.const ? ' const' : '') + "'"
 }
