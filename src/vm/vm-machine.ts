@@ -1,4 +1,11 @@
-import { debugGetStack, getValueFromAddr, setValueToAddr } from './mem-utils'
+import {
+  allocateInHeap,
+  debugGetHeap,
+  debugGetStack,
+  freeInHeap,
+  getValueFromAddr,
+  setValueToAddr
+} from './mem-utils'
 import { builtins, OpCodes } from './opcodes'
 import { BaseType } from './types'
 import { Instruction, Program } from './vm-compiler'
@@ -20,12 +27,19 @@ function popOS(): any {
 
 const BUILTINS: { [code in builtins]: () => void } = {
   // malloc
-  0: () => {},
+  0: () => {
+    OS.push(allocateInHeap(getValueFromAddr(EBP + BaseType.addr * 2, BaseType.int)))
+  },
   // free
-  1: () => {},
-  // debug display heap
-  2: () => {},
+  1: () => {
+    OS.push(freeInHeap(getValueFromAddr(EBP + BaseType.addr * 2, BaseType.addr)))
+  },
   // printf
+  2: () => {
+    console.log('printf: ', getValueFromAddr(EBP + BaseType.addr * 2, BaseType.addr))
+    OS.push(0)
+  },
+  // debug display stack and heap
   3: () => {}
 }
 
@@ -90,16 +104,11 @@ const M: { [code in OpCodes]: () => void } = {
   },
 
   DEREF: () => {
-    // we should dereference the pointer here.
-    // const op = E[instr.args![0]][instr.args![1]] as number
-    // OS.push(E[Math.floor(op / 10)][op % 10])
-    // TODO
+    OS.push(getValueFromAddr(OS.pop()!, instr.args![0]))
   },
 
   REF: () => {
-    // we should get the address here. for now we just push a dummy value
-    // OS.push((10 * instr.args![0] + instr.args![1]) as number)
-    // TODO
+    OS.push(EBP + instr.args![0])
   },
 
   EQ: () => {
@@ -315,6 +324,7 @@ export function runWithProgram(p: Program): any {
     M[instr.opcode]()
     console.debug('OS: ', OS)
     console.debug('stack: ', debugGetStack(ESP))
+    console.debug('heap: ', debugGetHeap())
   }
 
   // main functions guarantee a return.

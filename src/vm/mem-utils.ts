@@ -25,14 +25,17 @@ class MemoryManager {
     if (splitted.size > 0) {
       this.nodes.splice(idx + 1, 0, splitted)
     }
+    console.debug('debug allocate', original)
     return original.start
   }
 
   free(addr: number) {
-    const idx = this.nodes.findIndex(node => (node.start = addr))
+    console.debug('debug free', addr)
+    const idx = this.nodes.findIndex(node => node.start === addr && node.allocated)
     if (idx === -1) {
       return undefined
     }
+    console.debug('debug free node', idx, this.nodes[idx])
     this.nodes[idx].allocated = false
     while (idx + 1 < this.nodes.length && !this.nodes[idx + 1].allocated) {
       this.nodes[idx].size += this.nodes[idx + 1].size
@@ -58,7 +61,7 @@ export function getValueFromAddr(addr: number, length: BaseType) {
   } else if (length === BaseType.long) {
     return Number(MEMORY.getBigInt64(addr, true))
   } else {
-    throw new Error('invalid type')
+    throw new Error(`invalid type: ${length}`)
   }
 }
 
@@ -93,6 +96,7 @@ export function allocateInHeap(size: number) {
 }
 
 export function freeInHeap(addr: number) {
+  console.debug('debug free', addr)
   const result = HEAP_MANAGER.free(ADDRESS_SPACE - addr - 1)
   if (result === undefined) {
     throw new Error('invalid address')
@@ -106,4 +110,8 @@ export function debugGetStack(ESP: number) {
     s.push(getValueFromAddr(i, 4))
   }
   return s
+}
+
+export function debugGetHeap() {
+  return HEAP_MANAGER.nodes.filter(node => node.allocated)
 }

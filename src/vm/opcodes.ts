@@ -11,8 +11,8 @@ export enum OpCodes {
   MOD = 'MOD',
   INC = 'INC', // TODO: solve this
   DEC = 'DEC', // TODO: solve this
-  DEREF = 'DEREF', // TODO: solve this
-  REF = 'REF', // TODO: solve this
+  DEREF = 'DEREF', // ~=LD, load value into OS, value from stack, absolute addr from OS, [size]
+  REF = 'REF', // load absolute address into OS, offset value from args, [offset]
   EQ = 'EQ',
   NE = 'NE',
   GEQ = 'GEQ',
@@ -71,6 +71,6 @@ type _ = EnsureCorrectEnum<typeof OpCodes>
 export enum builtins {
   malloc = 0,
   free = 1,
-  DEBUGDISPLAY = 2,
-  printf = 3
+  printf = 2,
+  DEBUGDISPLAY = 3
 }

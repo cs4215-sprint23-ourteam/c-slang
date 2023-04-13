@@ -106,7 +106,7 @@ const BuiltInFunctionNames: CFrame = [
   {
     name: 'malloc',
     type: {
-      child: { type: BaseType.void, signed: false },
+      child: { type: BaseType.addr, signed: false },
       const: false,
       depth: 0,
       params: [
@@ -115,9 +115,44 @@ const BuiltInFunctionNames: CFrame = [
           const: false,
           depth: 0
         }
-      ]
+      ],
+      size: 8
     } as Type,
-    addr: 1
+    addr: 0
+  },
+  {
+    name: 'free',
+    type: {
+      child: { type: BaseType.void, signed: false },
+      const: false,
+      depth: 0,
+      params: [
+        {
+          child: { type: BaseType.addr, signed: false },
+          const: false,
+          depth: 0
+        }
+      ],
+      size: 8
+    } as Type,
+    addr: 8
+  },
+  {
+    name: 'printf',
+    type: {
+      child: { type: BaseType.int, signed: false },
+      const: false,
+      depth: 0,
+      params: [
+        {
+          child: { type: BaseType.addr, signed: false },
+          const: false,
+          depth: 0
+        }
+      ],
+      size: 8
+    } as Type,
+    addr: 16
   }
 ]
 const GlobalCompileEnvironment: CEnv = {
@@ -967,6 +1002,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       // function call
       prepareCall()
 
+      const newEnv = helpers.newCallFrame(env)
       let arity = 0
       if (posExpP.nodeChildren.length === 4) {
         // function call with arguments
@@ -975,7 +1011,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
         const argExpL = posExpP.children![1] as CTree
         const list = flatten(argExpL)
         for (let i = 0; i < list.length; i += 2) {
-          compile(list[i] as CTree, env)
+          compile(list[i] as CTree, newEnv)
           Instructions[wc++] = {
             opcode: OpCodes.PUSH,
             args: [BaseType.int]
@@ -1139,20 +1175,26 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
         const token = unaOp.children![0] as Token
         const opcode = VALID_UNARY_OPERATORS.get(token.lexeme) as OpCodes
         const type = TypeStack.pop()! as Type
+        // TODO seems not working, type undefined
+        console.debug('debug type', type)
         if (opcode === OpCodes.DEREF) {
           if (type.depth === 0)
             throw new Error('invalid type argument of unary * (have ' + typeToString(type) + ')')
           TypeStack.push(type.child as Type)
+          Instructions[wc++] = {
+            opcode: opcode,
+            args: [getSizeFromType(type)]
+          }
         } else if (opcode === OpCodes.REF) {
           TypeStack.push({
             child: type,
             const: false,
             depth: type.depth + 1
           })
-        }
-        Instructions[wc++] = {
-          opcode: opcode,
-          args: [loc]
+          Instructions[wc++] = {
+            opcode: opcode,
+            args: [loc]
+          }
         }
       }
     }
@@ -1175,16 +1217,16 @@ function compileToIns(program: CTree): Program {
       args: [idx]
     }
   })
-  for (const func of BuiltInFunctionNames) {
+  Array.from(BuiltInFunctionNames.keys()).forEach(idx => {
     Instructions[wc++] = {
       opcode: OpCodes.LDF,
-      args: [func.addr]
+      args: [idx + 1]
     }
     Instructions[wc++] = {
       opcode: OpCodes.PUSH,
       args: [BaseType.addr]
     }
-  }
+  })
 
   compile(program, GlobalCompileEnvironment)
   const MainPos = helpers.findPos(GlobalCompileEnvironment, 'main')

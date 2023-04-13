@@ -48,6 +48,10 @@ export function getSizeFromType(t: Type) {
   if ('size' in t && t.size !== undefined) {
     return t.size
   }
+  if (t.depth > 0) {
+    // not sure
+    return BaseType.addr
+  }
   let c = t.child
   while (!('signed' in c)) {
     c = c.child
