@@ -160,6 +160,8 @@ const GlobalCompileEnvironment: CEnv = {
   ESP: BuiltInFunctionNames.length * BaseType.addr,
   EBP: 0
 }
+// to deal with function pointers
+let latestVarName: string = ''
 // type-checking is excruciating to deal with, especially in exprs with many layers of nested
 // exprs. since we don't return any information while compiling, we use a global stack to throw
 // the type back so we can check if it's allowed.
@@ -905,7 +907,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
         console.log("warning: 'return' with a value, in function returning void")
       } else {
         const warning = compareTypes(returnType, type, true)
-        console.log('warning: ' + warning)
+        if (warning !== Warnings.SUCCESS) console.log('warning: ' + warning)
       }
     } else {
       Instructions[wc++] = {
@@ -973,7 +975,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     // children: epsilon
     //        OR unary op token, postfix_expr_p
     //        OR '(', ')', postfix_expr_p
-    //        OR '(', argument_expr_list, ')'
+    //        OR '(', argument_expr_list, ')', postfix_expr_p
     const posExpP = node.children![1] as CTree
     if (posExpP.children!.length === 1) {
       // variable
@@ -1020,9 +1022,11 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
         }
         arity = (list.length + 1) / 2
       }
-      const name = (priExp.children![0] as Token).lexeme
-
       // we only get to this segment with function calls
+      // we can (informally) guarantee correctness because we always compile a primary_expr
+      // before, and this segment of the code is only reached on function calls, which means
+      // primary_expr must contain an identifier token.
+      const name = latestVarName
       const type = helpers.find(env, name).type as FunctionType
       const params = type.params
       if (params.length > arity) throw new Error('too many arguments to function ' + name)
@@ -1048,33 +1052,39 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
   },
 
   // children: expression token
+  //        OR '(', expr, ')'
   primary_expr: (node, env) => {
-    const token = node.children![0] as Token
-    if (token.tokenClass === 'CONSTANT') {
-      let raw = token.lexeme
-      while ((raw.at(-1) as string) > '9' && (raw.at(1) as string) <= '9') {
-        raw = raw.slice(0, -1)
+    if (node.children!.length === 1) {
+      const token = node.children![0] as Token
+      if (token.tokenClass === 'CONSTANT') {
+        let raw = token.lexeme
+        while ((raw.at(-1) as string) > '9' && (raw.at(1) as string) <= '9') {
+          raw = raw.slice(0, -1)
+        }
+        const value = Number(raw)
+        Instructions[wc++] = { opcode: OpCodes.LDC, args: [value] }
+        // we just use the least generalised type possible. this is because we check for
+        // possible truncation during assignment but not padding, because we don't actually
+        // do any casting in the compiler (since we don't ever handle raw values, we just
+        // load them for the machine to do).
+        TypeStack.push({
+          child: makeSigned(BaseType.int),
+          const: false,
+          depth: 0
+        })
+      } else if (token.tokenClass === 'IDENTIFIER') {
+        const name: string = token.lexeme
+        const loc = helpers.findPos(env, name)
+        console.debug('debug size', helpers.find(env, name), env)
+        Instructions[wc++] = {
+          opcode: OpCodes.LD,
+          args: [loc, getSizeFromType(helpers.find(env, name).type)]
+        }
+        TypeStack.push(helpers.find(env, name).type)
+        latestVarName = name
       }
-      const value = Number(raw)
-      Instructions[wc++] = { opcode: OpCodes.LDC, args: [value] }
-      // we just use the least generalised type possible. this is because we check for
-      // possible truncation during assignment but not padding, because we don't actually
-      // do any casting in the compiler (since we don't ever handle raw values, we just
-      // load them for the machine to do).
-      TypeStack.push({
-        child: makeSigned(BaseType.int),
-        const: false,
-        depth: 0
-      })
-    } else if (token.tokenClass === 'IDENTIFIER') {
-      const name: string = token.lexeme
-      const loc = helpers.findPos(env, name)
-      console.debug('debug size', helpers.find(env, name), env)
-      Instructions[wc++] = {
-        opcode: OpCodes.LD,
-        args: [loc, getSizeFromType(helpers.find(env, name).type)]
-      }
-      TypeStack.push(helpers.find(env, name).type)
+    } else if (node.children!.length === 3) {
+      compile(node.children![1] as CTree, env)
     }
   },
 
@@ -1179,12 +1189,18 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
         // TODO seems not working, type undefined
         console.debug('debug type', type)
         if (opcode === OpCodes.DEREF) {
-          if (type.depth === 0)
+          if ('params' in type) {
+            // function pointer called in (*ptr) style
+            // console.log(node.children![1])
+            compile(node.children![1] as CTree, env)
+          } else if (type.depth === 0) {
             throw new Error('invalid type argument of unary * (have ' + typeToString(type) + ')')
-          TypeStack.push(type.child as Type)
-          Instructions[wc++] = {
-            opcode: opcode,
-            args: [getSizeFromType(type)]
+          } else {
+            TypeStack.push(type.child as Type)
+            Instructions[wc++] = {
+              opcode: opcode,
+              args: [getSizeFromType(type)]
+            }
           }
         } else if (opcode === OpCodes.REF) {
           TypeStack.push({
