@@ -584,7 +584,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
               ')'
           )
         }
-      } else {
+      } else if (op != '=') {
         // more lvalue abuse
         compile(node.children![0] as CTree, env)
         const opcode = VALID_BINARY_OPERATORS.get(partial) as OpCodes
