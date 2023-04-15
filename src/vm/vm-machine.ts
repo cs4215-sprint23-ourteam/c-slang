@@ -108,12 +108,23 @@ const M: { [code in OpCodes]: () => void } = {
     OS.push(op)
   },
 
+  // ideally this instruction should not exist. every time we load something, we should
+  // split it into two instructions - load the address into the OS, then get a value
+  // from the address. this allows for easy dereferencing (add derefs between the two)
+  // and assignments (remove the get instruction). unfortunately i do not have time :-(
+  // this will have to do.
+  DEREF_ADDR: () => {
+    const offset = popOS()
+    OS.push(getValueFromAddr(EBP + offset, BaseType.addr) - EBP)
+  },
+
   DEREF: () => {
-    OS.push(getValueFromAddr(OS.pop()!, instr.args![0]))
+    const addr = popOS()
+    OS.push(getValueFromAddr(addr, instr.args![0]))
   },
 
   REF: () => {
-    OS.push(EBP + instr.args![0])
+    OS.push(EBP + popOS())
   },
 
   EQ: () => {
@@ -202,7 +213,12 @@ const M: { [code in OpCodes]: () => void } = {
 
   GOTO: () => (PC = instr.args![0] as number),
 
-  ASSIGN: () => setValueToAddr(EBP + instr.args![0], instr.args![1], OS.slice(-1)[0]),
+  ASSIGN: () => {
+    const op = popOS()
+    const offset = popOS()
+    setValueToAddr(EBP + offset, instr.args![0], op)
+    OS.push(op)
+  },
 
   EXS: () => {
     ESP += instr.args![0]
@@ -210,7 +226,7 @@ const M: { [code in OpCodes]: () => void } = {
 
   PUSH: () => {
     const size = instr.args![0]
-    setValueToAddr(ESP, size, OS.pop()!)
+    setValueToAddr(ESP, size, popOS())
     ESP += size
   },
 
@@ -219,7 +235,7 @@ const M: { [code in OpCodes]: () => void } = {
   },
 
   ASGB: () => {
-    EBP = OS.pop()!
+    EBP = popOS()
   },
 
   LDS: () => {
@@ -275,7 +291,7 @@ const M: { [code in OpCodes]: () => void } = {
   CALL: () => {
     // set return address
     setValueToAddr(EBP + BaseType.addr, BaseType.addr, PC)
-    PC = OS.pop()!
+    PC = popOS()
   },
 
   CALLP: () => {

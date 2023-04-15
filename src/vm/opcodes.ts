@@ -11,6 +11,7 @@ export enum OpCodes {
   MOD = 'MOD',
   INC = 'INC', // TODO: solve this
   DEC = 'DEC', // TODO: solve this
+  DEREF_ADDR = 'DEREF_ADDR',
   DEREF = 'DEREF', // ~=LD, load value into OS, value from stack, absolute addr from OS, [size]
   REF = 'REF', // load absolute address into OS, offset value from args, [offset]
   EQ = 'EQ',
@@ -29,7 +30,7 @@ export enum OpCodes {
   LDF = 'LDF', // load function address into OS, value from args, [value]
   LD = 'LD', // load value into OS, value from stack, [addr, size]
   GOTO = 'GOTO',
-  ASSIGN = 'ASSIGN', // assign to stack, value from OS top, [addr, size]
+  ASSIGN = 'ASSIGN', // assign to stack, value and offset popped from OS, [size]
   // should always push or exs before assign, otherwise ESP will not be correctly set, causing error when moving EBP
   PUSH = 'PUSH', // push to stack, ~=EXS+ASSIGN, value popped from OS, [size]
   EXS = 'EXS', // extend stack, just increase ESP, [size]
