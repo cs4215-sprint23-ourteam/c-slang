@@ -559,28 +559,29 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     }
     if (node.children!.length === 3) {
       const loc = lvalueLocation(env, node.children![0] as CTree, 'left operand of assignment')
-      const ltype = lvalueObject(env, node.children![0] as CTree, 'left operand of assignment').type
+      let ltype = lvalueObject(env, node.children![0] as CTree, 'left operand of assignment').type
       Instructions[wc++] = {
         opcode: OpCodes.LDC,
         args: [loc]
       }
       for (let i = 0; i < derefCount(node.children![0] as CTree); i++) {
         Instructions[wc++] = { opcode: OpCodes.DEREF_ADDR }
+        ltype = ltype.child as Type
       }
 
       const assOp = node.children![1] as CTree
       const token = assOp.children![0] as Token
-      const opcode = VALID_ASSIGNMENT_OPERATORS.get(token.lexeme) as OpCodes
+      const op = token.lexeme
+      const partial = op.slice(0, -1)
       compile(node.children![2] as CTree, env)
       const rtype = TypeStack.pop() as Type
-      let size = 1
-      if (opcode == OpCodes.ASSIGN) {
+      if (op == OpCodes.ASSIGN) {
         const warning = compareTypes(ltype, rtype)
         if (warning !== Warnings.SUCCESS) console.log('warning: assignment' + warning)
       } else if (rtype.depth > 0) {
         throw new Error(
           'invalid operands to binary ' +
-            token.lexeme.slice(0, -1) +
+            partial +
             ' (have ' +
             typeToString(ltype) +
             ' and ' +
@@ -589,25 +590,33 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
         )
       } else if (ltype.depth > 0) {
         // check for pointer arithmetic
-        if (opcode != OpCodes.ADD_ASSIGN && opcode != OpCodes.SUB_ASSIGN) {
+        if (partial != '+' && partial != '-') {
           // uh oh...
           throw new Error(
             'invalid operands to binary ' +
-              token.lexeme.slice(0, -1) +
+              partial +
               ' (have ' +
               typeToString(ltype) +
               ' and ' +
               typeToString(rtype) +
               ')'
           )
-        } else {
-          size = ltype.depth === 1 ? ((ltype.child as Type).child as SignedType).type : 8
+        }
+      } else {
+        // more lvalue abuse
+        compile(node.children![0] as CTree, env)
+        const opcode = VALID_BINARY_OPERATORS.get(partial) as OpCodes
+        Instructions[wc++] = {
+          opcode: opcode,
+          // ADD and SUB checks for this in event of pointer arithmetic.
+          // others don't care.
+          args: [1, 0]
         }
       }
       TypeStack.push(ltype)
       Instructions[wc++] = {
         opcode: OpCodes.ASSIGN,
-        args: [size]
+        args: [getSizeFromType(ltype)]
       }
     }
   },
@@ -688,13 +697,15 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       Instructions[wc++] = { opcode: OpCodes.LDC, args: [loc] }
       if (initDec.children!.length > 1) {
         const token = initDec.children![1] as Token
-        const opcode = VALID_ASSIGNMENT_OPERATORS.get(token.lexeme) as OpCodes
+        const op = token.lexeme
         compile(initDec.children![2] as CTree, env)
-        if (opcode == OpCodes.ASSIGN) {
+        if (op == '=') {
           const rtype = TypeStack.pop()!
           const warning = compareTypes(ltype, rtype)
           if (warning !== Warnings.SUCCESS) console.log('warning: initialization' + warning)
           TypeStack.push(ltype)
+        } else {
+          throw new Error("expected '=', ',', or ';' before '" + op + "' token")
         }
         Instructions[wc++] = {
           opcode: OpCodes.ASSIGN,
