@@ -446,9 +446,11 @@ function lvalueLocation(env: CEnv, node: CTree, op: string): number {
   return helpers.findPos(env, lvalueName(node, op))
 }
 
-// get number of dereferences to the expression; called on unary_expr
-// we can do some hacky stuff because we call this after lvalueCheck
+// get number of dereferences to the expression; called on unary_expr or primary_expr
+// (though probably more general) we can do some hacky stuff because we call this after
+// lvalueCheck
 function derefCount(node: CTree): number {
+  console.log(node)
   let count = 0
   while (true) {
     if (node.title === 'primary_expr') {
@@ -463,6 +465,7 @@ function derefCount(node: CTree): number {
       node = node.children![0] as CTree
     }
   }
+  // console.log('deref count is ' + count)
   return count
 }
 
@@ -1025,34 +1028,40 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     } else if (posExpP.children!.length === 2) {
       // unary operator
       const token = posExpP.children![0] as Token
-      const opcode = VALID_UNARY_OPERATORS.get(token.lexeme) as OpCodes
+      const opcode = VALID_BINARY_OPERATORS.get(token.lexeme[0]) as OpCodes
       const loc = lvalueLocation(
         env,
         priExp,
         (opcode === OpCodes.INC ? 'increment' : 'decrement') + ' operand'
       )
-      const type = TypeStack.pop()!
-      const size =
-        type.depth === 0
-          ? 1
-          : type.depth === 1
-          ? ((type.child as Type).child as SignedType).type
-          : 8
-      TypeStack.push(type)
-      Instructions[wc++] = {
-        opcode: opcode,
-        args: [-1, size]
-      }
+      // this is also a bit hacky. so we need to have address, value in the OS in that order
+      // for assign to work, but compiling above already loads the value. now because we know
+      // we have an lvalue, we know compiling only serves to load a value into the OS... so
+      // let's get rid of it and load it again. in an ideal system we use registers so we can
+      // shift values around without resorting to whatever this is.
+      Instructions[wc++] = { opcode: OpCodes.POP }
       Instructions[wc++] = {
         opcode: OpCodes.LDC,
         args: [loc]
       }
+      for (let i = 0; i < derefCount(node.children![0] as CTree); i++) {
+        Instructions[wc++] = { opcode: OpCodes.DEREF_ADDR }
+      }
+      compile(priExp, env)
+      const type = TypeStack.pop()!
+      TypeStack.push(type)
+      Instructions[wc++] = {
+        opcode: OpCodes.LDC,
+        args: [1]
+      }
+      Instructions[wc++] = {
+        opcode: opcode,
+        args: [1, 0]
+      }
       Instructions[wc++] = {
         opcode: OpCodes.ASSIGN,
-        args: [getSizeFromType(ltype)]
+        args: [getSizeFromType(type)]
       }
-
-      Instructions[wc++] = { opcode: OpCodes.POP }
     } else if (posExpP.children!.length >= 3 && posExpP.children!.length <= 4) {
       // function call
       prepareCall()
@@ -1211,34 +1220,42 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     } else if (node.children!.length === 2) {
       if ('lexeme' in node.children![0]) {
         const token = node.children![0] as Token
-        const opcode = VALID_UNARY_OPERATORS.get(token.lexeme) as OpCodes
+        const opcode = VALID_BINARY_OPERATORS.get(token.lexeme[0]) as OpCodes
         const loc = lvalueLocation(
           env,
           node.children![1] as CTree,
-          (opcode === OpCodes.INC ? 'increment' : 'decrement') + ' operator'
+          (opcode === OpCodes.ADD ? 'increment' : 'decrement') + ' operator'
         )
         Instructions[wc++] = {
           opcode: OpCodes.LDC,
           args: [loc]
         }
+        for (let i = 0; i < derefCount(node.children![1] as CTree); i++) {
+          Instructions[wc++] = { opcode: OpCodes.DEREF_ADDR }
+        }
         compile(node.children![1] as CTree, env)
         const type = TypeStack.pop()!
-        const size =
-          type.depth === 0
-            ? 1
-            : type.depth === 1
-            ? ((type.child as Type).child as SignedType).type
-            : 8
         TypeStack.push(type)
         Instructions[wc++] = {
+          opcode: OpCodes.LDC,
+          args: [1]
+        }
+        Instructions[wc++] = {
           opcode: opcode,
-          args: [0, size]
+          args: [1, 0]
         }
         Instructions[wc++] = {
           opcode: OpCodes.ASSIGN,
           args: [getSizeFromType(type)]
         }
-        Instructions[wc++] = { opcode: OpCodes.POP }
+        Instructions[wc++] = {
+          opcode: OpCodes.LDC,
+          args: [-1]
+        }
+        Instructions[wc++] = {
+          opcode: opcode,
+          args: [1, 0]
+        }
       } else {
         compile(node.children![1] as CTree, env)
         const type = TypeStack.pop()!
