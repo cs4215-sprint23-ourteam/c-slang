@@ -16,20 +16,6 @@ import {
   Warnings
 } from './types'
 
-const VALID_ASSIGNMENT_OPERATORS = new Map([
-  ['=', OpCodes.ASSIGN],
-  ['+=', OpCodes.ADD_ASSIGN],
-  ['-=', OpCodes.SUB_ASSIGN],
-  ['*=', OpCodes.MUL_ASSIGN],
-  ['/=', OpCodes.DIV_ASSIGN],
-  ['%=', OpCodes.MOD_ASSIGN],
-  ['<<=', OpCodes.LEFT_ASSIGN],
-  ['>>=', OpCodes.RIGHT_ASSIGN],
-  ['^=', OpCodes.XOR_ASSIGN],
-  ['&=', OpCodes.AND_ASSIGN],
-  ['|=', OpCodes.OR_ASSIGN]
-])
-
 const VALID_BINARY_OPERATORS = new Map([
   ['+', OpCodes.ADD],
   ['-', OpCodes.SUB],
@@ -62,8 +48,6 @@ const VALID_SHIFT_OPERATORS = new Map([
 ])
 
 const VALID_UNARY_OPERATORS = new Map([
-  ['++', OpCodes.INC],
-  ['--', OpCodes.DEC],
   ['*', OpCodes.DEREF],
   ['&', OpCodes.REF]
 ])
@@ -450,7 +434,6 @@ function lvalueLocation(env: CEnv, node: CTree, op: string): number {
 // (though probably more general) we can do some hacky stuff because we call this after
 // lvalueCheck
 function derefCount(node: CTree): number {
-  console.log(node)
   let count = 0
   while (true) {
     if (node.title === 'primary_expr') {
@@ -465,7 +448,6 @@ function derefCount(node: CTree): number {
       node = node.children![0] as CTree
     }
   }
-  // console.log('deref count is ' + count)
   return count
 }
 
@@ -1043,7 +1025,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       const loc = lvalueLocation(
         env,
         priExp,
-        (opcode === OpCodes.INC ? 'increment' : 'decrement') + ' operand'
+        (opcode === OpCodes.ADD ? 'increment' : 'decrement') + ' operand'
       )
       // this is also a bit hacky. so we need to have address, value in the OS in that order
       // for assign to work, but compiling above already loads the value. now because we know

@@ -94,20 +94,6 @@ const M: { [code in OpCodes]: () => void } = {
     OS.push(op1 % op2)
   },
 
-  INC: () => {
-    // push two values, one to use and one to assign
-    const op = (popOS() as number) + instr.args![1]
-    OS.push((op + instr.args![0] * instr.args![1]) as number)
-    OS.push(op)
-  },
-
-  DEC: () => {
-    // push two values, one to use and one to assign
-    const op = (popOS() as number) - instr.args![1]
-    OS.push((op - instr.args![0] * instr.args![1]) as number)
-    OS.push(op)
-  },
-
   // ideally this instruction should not exist. every time we load something, we should
   // split it into two instructions - load the address into the OS, then get a value
   // from the address. this allows for easy dereferencing (add derefs between the two)
@@ -244,48 +230,6 @@ const M: { [code in OpCodes]: () => void } = {
 
   LDPC: () => {
     OS.push(PC)
-  },
-
-  // all these assign operations are bugged
-  ADD_ASSIGN: () => {
-    const original = getValueFromAddr(instr.args![0], instr.args![1])
-    setValueToAddr(instr.args![0], instr.args![1], original + OS.slice(-1)[0])
-  },
-  SUB_ASSIGN: () => {
-    const original = getValueFromAddr(instr.args![0], instr.args![1])
-    setValueToAddr(instr.args![0], instr.args![1], original - OS.slice(-1)[0])
-  },
-  MUL_ASSIGN: () => {
-    const original = getValueFromAddr(instr.args![0], instr.args![1])
-    setValueToAddr(instr.args![0], instr.args![1], original * OS.slice(-1)[0])
-  },
-  DIV_ASSIGN: () => {
-    const original = getValueFromAddr(instr.args![0], instr.args![1])
-    setValueToAddr(instr.args![0], instr.args![1], Math.floor(original / OS.slice(-1)[0]))
-  },
-  MOD_ASSIGN: () => {
-    const original = getValueFromAddr(instr.args![0], instr.args![1])
-    setValueToAddr(instr.args![0], instr.args![1], original % OS.slice(-1)[0])
-  },
-  LEFT_ASSIGN: () => {
-    const original = getValueFromAddr(instr.args![0], instr.args![1])
-    setValueToAddr(instr.args![0], instr.args![1], original << OS.slice(-1)[0])
-  },
-  RIGHT_ASSIGN: () => {
-    const original = getValueFromAddr(instr.args![0], instr.args![1])
-    setValueToAddr(instr.args![0], instr.args![1], original >> OS.slice(-1)[0])
-  },
-  XOR_ASSIGN: () => {
-    const original = getValueFromAddr(instr.args![0], instr.args![1])
-    setValueToAddr(instr.args![0], instr.args![1], original ^ OS.slice(-1)[0])
-  },
-  AND_ASSIGN: () => {
-    const original = getValueFromAddr(instr.args![0], instr.args![1])
-    setValueToAddr(instr.args![0], instr.args![1], original & OS.slice(-1)[0])
-  },
-  OR_ASSIGN: () => {
-    const original = getValueFromAddr(instr.args![0], instr.args![1])
-    setValueToAddr(instr.args![0], instr.args![1], original | OS.slice(-1)[0])
   },
 
   CALL: () => {

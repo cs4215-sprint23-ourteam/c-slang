@@ -9,8 +9,6 @@ export enum OpCodes {
   MUL = 'MUL',
   DIV = 'DIV',
   MOD = 'MOD',
-  INC = 'INC', // TODO: solve this
-  DEC = 'DEC', // TODO: solve this
   DEREF_ADDR = 'DEREF_ADDR',
   DEREF = 'DEREF', // ~=LD, load value into OS, value from stack, absolute addr from OS, [size]
   REF = 'REF', // load absolute address into OS, offset value from args, [offset]
@@ -38,19 +36,6 @@ export enum OpCodes {
   ASGB = 'ASGB', // assign popped OS to EBP
   LDS = 'LDS', // load ESP into OS
   LDPC = 'LDPC', // load PC (ADDR) into OS
-
-  // TODO add size
-  ADD_ASSIGN = 'ADD_ASSIGN',
-  SUB_ASSIGN = 'SUB_ASSIGN',
-  MUL_ASSIGN = 'MUL_ASSIGN',
-  DIV_ASSIGN = 'DIV_ASSIGN',
-  MOD_ASSIGN = 'MOD_ASSIGN',
-  LEFT_ASSIGN = 'LEFT_ASSIGN',
-  RIGHT_ASSIGN = 'RIGHT_ASSIGN',
-  XOR_ASSIGN = 'XOR_ASSIGN',
-  AND_ASSIGN = 'AND_ASSIGN',
-  OR_ASSIGN = 'OR_ASSIGN',
-
   CALL = 'CALL', // call function, addr from popped OS
   CALLP = 'CALLP', // builtin functions, id from arg. [builtinID]
   JOF = 'JOF', // jump on false, value from OS top, [addr]
@@ -62,8 +47,6 @@ export enum OpCodes {
   CMARKER = 'CMARKER',
   RET = 'RET',
   RMARKER = 'RMARKER', // marker for return
-  // ENTER_SCOPE = 'ENTER_SCOPE',
-  // EXIT_SCOPE = 'EXIT_SCOPE',
   DONE = 'DONE'
 }
 
