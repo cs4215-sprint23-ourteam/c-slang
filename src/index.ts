@@ -50,46 +50,29 @@ export function parseError(errors: SourceError[]): string {
   return errorMessagesArr.join('\n')
 }
 
-// export function findDeclaration(
-//   code: string,
-//   context: Context,
-//   loc: { line: number; column: number }
-// ): SourceLocation | null | undefined {
-//   const program = parse(code, context)
-//   if (!program) {
-//     return null
-//   }
-//   const identifierNode = findIdentifierNode(program, context, loc)
-//   if (!identifierNode) {
-//     return null
-//   }
-//   const declarationNode = findDeclarationNode(program, identifierNode)
-//   if (!declarationNode || identifierNode === declarationNode) {
-//     return null
-//   }
-//   return declarationNode.loc
-// }
+export function findDeclaration(
+  code: string,
+  context: Context,
+  loc: { line: number; column: number }
+): SourceLocation | null | undefined {
+  const program = parse(code, context)
+  if (!program) {
+    return null
+  }
+  return null
+}
 
-// export function hasDeclaration(
-//   code: string,
-//   context: Context,
-//   loc: { line: number; column: number }
-// ): boolean {
-//   const program = parse(code, context)
-//   if (!program) {
-//     return false
-//   }
-//   const identifierNode = findIdentifierNode(program, context, loc)
-//   if (!identifierNode) {
-//     return false
-//   }
-//   const declarationNode = findDeclarationNode(program, identifierNode)
-//   if (declarationNode == null || declarationNode.loc == null) {
-//     return false
-//   }
-//
-//   return true
-// }
+export function hasDeclaration(
+  code: string,
+  context: Context,
+  loc: { line: number; column: number }
+): boolean {
+  const program = parse(code, context)
+  if (!program) {
+    return false
+  }
+  return true
+}
 
 export async function runInContext(
   code: string,

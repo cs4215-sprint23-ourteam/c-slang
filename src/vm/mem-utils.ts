@@ -51,6 +51,10 @@ const MEMORY = new DataView(new ArrayBuffer(ADDRESS_SPACE))
 
 export const HEAP_MANAGER = new MemoryManager(ADDRESS_SPACE / 2)
 
+export function clearMemory() {
+  HEAP_MANAGER.make(ADDRESS_SPACE / 2)
+}
+
 export function getValueFromAddr(addr: number, length: BaseType) {
   if (length === BaseType.char) {
     return MEMORY.getInt8(addr)

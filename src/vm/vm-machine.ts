@@ -1,9 +1,11 @@
 import {
   allocateInHeap,
+  clearMemory,
   debugGetHeap,
   debugGetStack,
   freeInHeap,
   getValueFromAddr,
+  HEAP_MANAGER,
   setValueToAddr
 } from './mem-utils'
 import { builtins, OpCodes } from './opcodes'
@@ -18,6 +20,7 @@ let ESP = 0
 let EBP = 0
 let INSTRS: Instruction[] = []
 let instr: Instruction
+const stdout: any[] = []
 
 // wrapper for testing
 function popOS(): any {
@@ -34,13 +37,23 @@ const BUILTINS: { [code in builtins]: () => void } = {
   1: () => {
     OS.push(freeInHeap(getValueFromAddr(EBP + BaseType.addr * 2, BaseType.addr)))
   },
-  // printf
+  // print
   2: () => {
-    console.log('printf: ', getValueFromAddr(EBP + BaseType.addr * 2, BaseType.addr))
+    const msg = `print: ${getValueFromAddr(EBP + BaseType.addr * 2, BaseType.int)}`
+    console.debug(msg)
+    stdout.push(msg)
     OS.push(0)
   },
   // debug display stack and heap
-  3: () => {}
+  3: () => {
+    stdout.push(`debug stack`)
+    stdout.push(debugGetStack(ESP))
+    stdout.push(`debug heap`)
+    stdout.push(debugGetHeap())
+    console.debug(`debug stack: `, debugGetStack(ESP))
+    console.debug(`debug heap: `, debugGetHeap())
+    OS.push(0)
+  }
 }
 
 // microcode
@@ -283,6 +296,8 @@ export function runWithProgram(p: Program): any {
   ESP = 0
   EBP = 0
   PC = ENTRY
+  clearMemory()
+  stdout.length = 0
 
   while (INSTRS[PC].opcode !== OpCodes.DONE) {
     instr = INSTRS[PC++]
@@ -295,5 +310,9 @@ export function runWithProgram(p: Program): any {
 
   // main functions guarantee a return.
   const top = OS.slice(-1)[0]
-  return top
+  console.debug('result:', top)
+  if (typeof window !== 'undefined') {
+    alert(`program execution result: ${top}`)
+  }
+  return stdout
 }
