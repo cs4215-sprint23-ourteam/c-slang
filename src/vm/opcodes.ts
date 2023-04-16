@@ -27,6 +27,7 @@ export enum OpCodes {
   OR = 'OR', // logical or
   LDF = 'LDF', // load function address into OS, value from args, [value]
   LD = 'LD', // load value into OS, value from stack, [addr, size]
+  LDA = 'LDA', // loads value into OS from a fixed address
   GOTO = 'GOTO',
   ASSIGN = 'ASSIGN', // assign to stack, value and offset popped from OS, [size]
   // should always push or exs before assign, otherwise ESP will not be correctly set, causing error when moving EBP

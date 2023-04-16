@@ -210,6 +210,8 @@ const M: { [code in OpCodes]: () => void } = {
 
   LD: () => OS.push(getValueFromAddr(EBP + instr.args![0], instr.args![1])),
 
+  LDA: () => OS.push(getValueFromAddr(instr.args![0], BaseType.addr)),
+
   GOTO: () => (PC = instr.args![0] as number),
 
   ASSIGN: () => {
