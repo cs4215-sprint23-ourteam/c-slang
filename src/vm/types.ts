@@ -126,7 +126,7 @@ export function compareTypes(left: Type, right: Type, isReturn: boolean = false)
   } else {
     return right.depth !== 0
       ? warningToString(Warnings.INC_PTR, left, right, isReturn)
-      : Warnings.SUCCESS
+      : warningToString(Warnings.PTR_TO_INT, left, right, isReturn)
   }
 }
 
@@ -202,10 +202,24 @@ export function makeFunctionType(type: Type, params: Type[]): FunctionType {
 }
 
 export function typeToString(type: Type): string {
-  if (type.depth === 0) {
-    // function pointer
-    if ('params' in type) {
+  // function pointer
+  if ('params' in type) {
+    let str =
+      typeToString({
+        child: type.child,
+        const: type.const,
+        depth: type.depth
+      }).slice(0, -1) + '(*)('
+    const params = (type as FunctionType).params
+    if (params.length > 0) {
+      for (let i = 0; i < params.length; i++) {
+        str += typeToString(params[i]).slice(1, -1) + ', '
+      }
+      str = str.slice(0, -2)
     }
+    return str + ")'"
+  }
+  if (type.depth === 0) {
     return (
       (type.const ? "'const " : "'") + BaseTypeStrings.get((type.child as SignedType).type) + "'"
     )
