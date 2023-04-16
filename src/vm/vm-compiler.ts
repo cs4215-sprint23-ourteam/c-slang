@@ -1102,10 +1102,12 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
         const list = flatten(argExpL)
         for (let i = 0; i < list.length; i += 2) {
           compile(list[i] as CTree, newEnv)
+          const type = TypeStack.pop()!
           Instructions[wc++] = {
             opcode: OpCodes.PUSH,
-            args: [BaseType.int]
+            args: [getSizeFromType(type)]
           }
+          TypeStack.push(type)
         }
         arity = (list.length + 1) / 2
       }
