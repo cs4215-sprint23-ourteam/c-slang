@@ -9,10 +9,10 @@ import {
   makeFunctionType,
   makeSigned,
   makeSized,
+  makeUndeclaredType,
   SignedType,
   Type,
   typeToString,
-  makeUndeclaredType,
   Warnings
 } from './types'
 
@@ -155,8 +155,6 @@ const GlobalCompileEnvironment: CEnv = {
   ESP: BuiltInFunctionNames.length * BaseType.addr,
   EBP: 0
 }
-// to deal with function pointers
-let latestVarName: string = ''
 // type-checking is excruciating to deal with, especially in exprs with many layers of nested
 // exprs. since we don't return any information while compiling, we use a global stack to throw
 // the type back so we can check if it's allowed.
@@ -169,7 +167,6 @@ function initGlobalVar() {
   GlobalCompileEnvironment.ESP = BuiltInFunctionNames.length * BaseType.addr
   GlobalCompileEnvironment.frames = [BuiltInFunctionNames, []]
   TypeStack.length = 0
-  latestVarName = ''
 }
 
 // for dealing with compile-time environments
@@ -1034,10 +1031,6 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
 
   // children: primary_expr, postfix_expr_p
   postfix_expr: (node, env) => {
-    const priExp = node.children![0] as CTree
-    compile(priExp, env)
-    const ltype = TypeStack.pop()!
-    TypeStack.push(ltype)
     // children: epsilon
     //        OR unary op token, postfix_expr_p
     //        OR '(', ')', postfix_expr_p
@@ -1045,8 +1038,14 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     const posExpP = node.children![1] as CTree
     if (posExpP.children!.length === 1) {
       // variable
+      const priExp = node.children![0] as CTree
+      compile(priExp, env)
     } else if (posExpP.children!.length === 2) {
       // unary operator
+      const priExp = node.children![0] as CTree
+      compile(priExp, env)
+      const ltype = TypeStack.pop()!
+      TypeStack.push(ltype)
       const token = posExpP.children![0] as Token
       const opcode = VALID_BINARY_OPERATORS.get(token.lexeme[0]) as OpCodes
       const loc = lvalueLocation(
@@ -1084,9 +1083,15 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       }
     } else if (posExpP.children!.length >= 3 && posExpP.children!.length <= 4) {
       // function call
+      const priExp = node.children![0] as CTree
       prepareCall()
+      const name = lvalueName(priExp, '')
+      const loc = lvalueLocation(env, priExp, '') + env.EBP
+      Instructions[wc++] = {
+        opcode: OpCodes.LDA,
+        args: [loc]
+      }
 
-      const name = latestVarName
       const newEnv = helpers.newCallFrame(env)
       let arity = 0
       if (posExpP.nodeChildren.length === 4) {
@@ -1097,10 +1102,12 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
         const list = flatten(argExpL)
         for (let i = 0; i < list.length; i += 2) {
           compile(list[i] as CTree, newEnv)
+          const type = TypeStack.pop()!
           Instructions[wc++] = {
             opcode: OpCodes.PUSH,
-            args: [BaseType.int]
+            args: [getSizeFromType(type)]
           }
+          TypeStack.push(type)
         }
         arity = (list.length + 1) / 2
       }
@@ -1159,7 +1166,6 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
           args: [loc, getSizeFromType(helpers.find(env, name).type)]
         }
         TypeStack.push(helpers.find(env, name).type)
-        latestVarName = name
       }
     } else if (node.children!.length === 3) {
       compile(node.children![1] as CTree, env)
