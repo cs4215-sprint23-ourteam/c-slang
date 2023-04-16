@@ -55,6 +55,6 @@ type _ = EnsureCorrectEnum<typeof OpCodes>
 export enum builtins {
   malloc = 0,
   free = 1,
-  printf = 2,
+  print = 2,
   DEBUGDISPLAY = 3
 }

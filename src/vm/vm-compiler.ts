@@ -122,14 +122,14 @@ const BuiltInFunctionNames: CFrame = [
     addr: 8
   },
   {
-    name: 'printf',
+    name: 'print',
     type: {
       child: { type: BaseType.int, signed: false },
       const: false,
       depth: 0,
       params: [
         {
-          child: { type: BaseType.addr, signed: false },
+          child: { type: BaseType.int, signed: false },
           const: false,
           depth: 0
         }
@@ -137,6 +137,17 @@ const BuiltInFunctionNames: CFrame = [
       size: 8
     } as Type,
     addr: 16
+  },
+  {
+    name: 'DEBUGDISPLAY',
+    type: {
+      child: { type: BaseType.int, signed: false },
+      const: false,
+      depth: 0,
+      params: [],
+      size: 8
+    } as Type,
+    addr: 24
   }
 ]
 const GlobalCompileEnvironment: CEnv = {
@@ -151,6 +162,15 @@ let latestVarName: string = ''
 // the type back so we can check if it's allowed.
 let returnType: Type
 const TypeStack: Type[] = []
+
+function initGlobalVar() {
+  Instructions.length = 0
+  wc = 0
+  GlobalCompileEnvironment.ESP = BuiltInFunctionNames.length * BaseType.addr
+  GlobalCompileEnvironment.frames = [BuiltInFunctionNames, []]
+  TypeStack.length = 0
+  latestVarName = ''
+}
 
 // for dealing with compile-time environments
 const helpers = {
@@ -453,6 +473,7 @@ function derefCount(node: CTree): number {
 
 export function compileProgram(program: CTree): Program {
   // pre-process prelude and vmInternalFunctions
+  initGlobalVar()
   return compileToIns(program)
 }
 

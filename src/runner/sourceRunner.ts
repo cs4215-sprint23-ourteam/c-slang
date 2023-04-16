@@ -32,11 +32,17 @@ async function runVM(program: CTree, context: Context, options: IOptions): Promi
     return Promise.resolve({
       status: 'finished',
       context,
-      value: runWithProgram(compileProgram(program))
+      value: (() => {
+        try {
+          return runWithProgram(compileProgram(program))
+        } catch (err) {
+          console.error('error:', err)
+          return err
+        }
+      })()
     })
   } catch (err) {
     // implement better error checking in the future
-    console.error(err)
     return resolvedErrorPromise
   }
 }
@@ -51,16 +57,24 @@ export async function sourceRunner(
   context.errors = []
 
   // Parse and validate
-  const parsedTree = parse(code, context)
-  if (!parsedTree) {
-    return resolvedErrorPromise
-  }
+  try {
+    const parsedTree = parse(code, context)
+    if (!parsedTree) {
+      throw 'error parsing'
+    }
 
-  if (context.errors.length > 0) {
-    return resolvedErrorPromise
-  }
+    if (context.errors.length > 0) {
+      return resolvedErrorPromise
+    }
 
-  return runVM(parsedTree, context, theOptions)
+    return runVM(parsedTree, context, theOptions)
+  } catch (err) {
+    return Promise.resolve({
+      status: 'finished',
+      context: context,
+      value: 'error parsing'
+    })
+  }
 }
 
 export async function sourceFilesRunner(
