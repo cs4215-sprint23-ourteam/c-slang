@@ -105,7 +105,7 @@ export function parse(source: string, context: Context) {
   const tokens = (parser as any).lexer.lexUnit.tokenize(source)
   const parse_tree: RawTree = (parser as any).parse(tokens)
   if (parse_tree) {
-    debugTree(parse_tree)
+    // debugTree(parse_tree)
   } else {
     console.debug('debug: error parsing')
   }
