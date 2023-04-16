@@ -1083,17 +1083,9 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       }
     } else if (posExpP.children!.length >= 3 && posExpP.children!.length <= 4) {
       // function call
-      const priExp = node.children![0] as CTree
-      prepareCall()
-      const name = lvalueName(priExp, '')
-      const loc = lvalueLocation(env, priExp, '') + env.EBP
-      Instructions[wc++] = {
-        opcode: OpCodes.LDA,
-        args: [loc]
-      }
-
-      const newEnv = helpers.newCallFrame(env)
+      // const newEnv = helpers.newCallFrame(env)
       let arity = 0
+      const pushes = []
       if (posExpP.nodeChildren.length === 4) {
         // function call with arguments
         // children: assignment expr, argument_expr_list_p
@@ -1101,16 +1093,29 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
         const argExpL = posExpP.children![1] as CTree
         const list = flatten(argExpL)
         for (let i = 0; i < list.length; i += 2) {
-          compile(list[i] as CTree, newEnv)
+          compile(list[i] as CTree, env)
           const type = TypeStack.pop()!
-          Instructions[wc++] = {
+          pushes.push({
             opcode: OpCodes.PUSH,
             args: [getSizeFromType(type)]
-          }
+          })
           TypeStack.push(type)
         }
         arity = (list.length + 1) / 2
       }
+
+      const priExp = node.children![0] as CTree
+      prepareCall()
+      pushes.forEach(ins => {
+        Instructions[wc++] = ins
+      })
+      const name = lvalueName(priExp, '')
+      const loc = lvalueLocation(env, priExp, '') + env.EBP
+      Instructions[wc++] = {
+        opcode: OpCodes.LDA,
+        args: [loc]
+      }
+
       // we only get to this segment with function calls
       // we can (informally) guarantee correctness because we always compile a primary_expr
       // before, and this segment of the code is only reached on function calls, which means
