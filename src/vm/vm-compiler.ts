@@ -12,7 +12,7 @@ import {
   SignedType,
   Type,
   typeToString,
-  UndeclaredType,
+  makeUndeclaredType,
   Warnings
 } from './types'
 
@@ -272,12 +272,12 @@ function createName(
 
   let size = getSizeFromType(type)
   console.debug('debug size', name, size, type, isFunction)
-  console.debug('debug size: undeclared', UndeclaredType)
+  console.debug('debug size: undeclared', makeUndeclaredType())
   if (isFunction) {
     size = BaseType.addr
     type = makeSized(type, size)
   }
-  console.debug('debug size: undeclared', UndeclaredType)
+  console.debug('debug size: undeclared', makeUndeclaredType())
   console.debug('debug size', name, size, type, isFunction)
   helpers.declare(name, size, type, env)
   if (extendStack) {
@@ -329,7 +329,7 @@ function extractName(baseType: Type, dec: CTree): [string, Type, CTree | undefin
 //                          OR type_qualifier, declaration_specifiers
 //                          OR type_specifier, declaration_specifiers
 function createTypeFromList(decSpe: CTree): Type {
-  const type = UndeclaredType
+  const type = makeUndeclaredType()
   console.debug('debug size: undeclared', type)
   let node = decSpe
   while (true) {
@@ -958,7 +958,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
     const iterType = token.lexeme as string
     const opcode = VALID_CONTROL_OPERATORS.get(iterType) as OpCodes
     if (iterType === 'return' && node.children!.length === 3) {
-      let type = UndeclaredType
+      let type = makeUndeclaredType()
       if (node.children!.length === 3) {
         compile(node.children![1] as CTree, env)
         type = TypeStack.pop()!

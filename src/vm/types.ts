@@ -37,14 +37,16 @@ export type FunctionType = Type & {
 }
 
 // dummy type
-export const UndeclaredType: Type = {
-  child: {
-    type: BaseType.void,
-    signed: false
-  } as const,
-  const: false,
-  depth: 0
-} as const
+export function makeUndeclaredType(): Type {
+  return {
+    child: {
+      type: BaseType.void,
+      signed: false
+    },
+    const: false,
+    depth: 0
+  }
+}
 
 // you can also do
 // return t.depth > 1 ? 8 : (t.child as SignedType).type
@@ -181,14 +183,14 @@ export function makeSized(type: Type, size: number): Type {
     const: type.const,
     depth: type.depth,
     size: size
-  }
+  } as const
 }
 
 export function makeSigned(type: BaseType): SignedType {
   return {
     type: type,
     signed: false
-  }
+  } as const
 }
 
 export function makeFunctionType(type: Type, params: Type[]): FunctionType {
