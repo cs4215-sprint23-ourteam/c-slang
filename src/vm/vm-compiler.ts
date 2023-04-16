@@ -1059,6 +1059,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       // function call
       prepareCall()
 
+      const name = latestVarName
       const newEnv = helpers.newCallFrame(env)
       let arity = 0
       if (posExpP.nodeChildren.length === 4) {
@@ -1080,7 +1081,6 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
       // we can (informally) guarantee correctness because we always compile a primary_expr
       // before, and this segment of the code is only reached on function calls, which means
       // primary_expr must contain an identifier token.
-      const name = latestVarName
       const type = helpers.find(env, name).type as FunctionType
       const params = type.params
       if (params.length > arity) throw new Error('too many arguments to function ' + name)
