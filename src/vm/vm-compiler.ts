@@ -155,8 +155,6 @@ const GlobalCompileEnvironment: CEnv = {
   ESP: BuiltInFunctionNames.length * BaseType.addr,
   EBP: 0
 }
-// to deal with function pointers
-let latestVarName: string = ''
 // type-checking is excruciating to deal with, especially in exprs with many layers of nested
 // exprs. since we don't return any information while compiling, we use a global stack to throw
 // the type back so we can check if it's allowed.
@@ -169,7 +167,6 @@ function initGlobalVar() {
   GlobalCompileEnvironment.ESP = BuiltInFunctionNames.length * BaseType.addr
   GlobalCompileEnvironment.frames = [BuiltInFunctionNames, []]
   TypeStack.length = 0
-  latestVarName = ''
 }
 
 // for dealing with compile-time environments
@@ -1095,7 +1092,6 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
         args: [loc]
       }
 
-      // const name = latestVarName
       const newEnv = helpers.newCallFrame(env)
       let arity = 0
       if (posExpP.nodeChildren.length === 4) {
@@ -1168,7 +1164,6 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
           args: [loc, getSizeFromType(helpers.find(env, name).type)]
         }
         TypeStack.push(helpers.find(env, name).type)
-        latestVarName = name
       }
     } else if (node.children!.length === 3) {
       compile(node.children![1] as CTree, env)
