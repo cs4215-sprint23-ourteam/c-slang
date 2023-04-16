@@ -177,7 +177,7 @@ export function compareTypesInCast(left: Type, right: Type): string {
     : Warnings.SUCCESS
 }
 
-export function makeSized(type: Type, size: number): Type {
+export function makeSized(type: any, size: number): Type {
   return {
     child: type.child,
     const: type.const,

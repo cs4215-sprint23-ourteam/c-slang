@@ -264,7 +264,7 @@ function createName(
       }) as Type[]
     }
     // dereference the pointer
-    type = makeFunctionType(type.child as Type, paramsList)
+    type = makeFunctionType(makeSized(type.child as Type, BaseType.addr), paramsList)
   }
 
   let size = getSizeFromType(type)
