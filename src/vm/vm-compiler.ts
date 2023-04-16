@@ -238,7 +238,13 @@ function createName(
       const parTypeList = arr[2]
       const parList = parTypeList.children![0] as CTree
       const params = parList.listItems
-      paramsList = params.map(parDec => createTypeFromList(parDec.children![0] as CTree)) as Type[]
+      paramsList = params.map(parDec => {
+        let type = createTypeFromList(parDec.children![0] as CTree)
+        if (parDec.children!.length === 2) {
+          type = updateTypeWithPointer(type, parDec.children![1].children![0] as CTree)
+        }
+        return type
+      }) as Type[]
     }
     // dereference the pointer
     type = makeFunctionType(type.child as Type, paramsList)
@@ -683,7 +689,7 @@ const compilers: { [nodeType: string]: (node: CTree, env: CEnv) => void } = {
         compile(initDec.children![2] as CTree, env)
         if (op == '=') {
           const rtype = TypeStack.pop()!
-          const warning = compareTypes(ltype, rtype)
+          const warning = compareTypes(ltype, rtype, false)
           if (warning !== Warnings.SUCCESS) console.log('warning: initialization' + warning)
           TypeStack.push(ltype)
         } else {
